@@ -1,0 +1,124 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "statsvy"
+dynamic = ["version"]
+description = "A command-line tool for scanning projects and collecting comprehensive source code metrics."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+keywords = ["code-metrics", "source-code", "statistics", "cli", "analysis"]
+dependencies = [
+    "rich>=13.7.0",
+    "click>=8.1.7",
+    "gitpython>=3.1.40",
+    "pyyaml>=6.0.3",
+    "pygments>=2.19.2",
+    "types-pygments>=2.19.0.20251121",
+]
+
+[project.urls]
+Homepage = "https://github.com/HermanKarlsson/statsvy"
+Repository = "https://github.com/HermanKarlsson/statsvy"
+Documentation = "https://statsvy.readthedocs.io"
+Changelog = "https://github.com/HermanKarlsson/statsvy/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/HermanKarlsson/statsvy/issues"
+
+[project.scripts]
+statsvy = "statsvy.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.1.8",
+    "pre-commit>=3.6.0",
+    "ty==0.0.17",
+    "python-semantic-release>=9.0.0",
+    "build>=1.0.0",
+]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocs-click>=0.8.1",
+]
+
+[tool.hatch.version]
+path = "src/statsvy/__init__.py"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["typings"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "N", "W", "B", "C90", "PL", "SIM", "ARG",
+    "ANN", "D", "S", "T20", "UP", "ERA", "RUF"
+]
+ignore = [
+    "PLR0913",  # Click commands naturally have many parameters
+    "PLR2004",
+    "D104",
+    "S101",
+    "S105"
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 7
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-branches = 10
+max-returns = 5
+max-statements = 30
+
+[tool.ty.rules]
+all = "error"
+
+[tool.ty.src]
+exclude = ["typings"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=statsvy --cov-report=term-missing --cov-fail-under=90"
+
+# --- Semantic Release Configuration ---
+
+[tool.semantic_release]
+version_variables = ["src/statsvy/__init__.py:__version__"]
+branch = "main"
+commit_message = "chore(release): v{version}"
+build_command = "python -m build"
+changelog_file = "CHANGELOG.md"
+upload_to_pypi = false  # Handled by separate publish workflow step
+tag_format = "v{version}"
+
+[tool.semantic_release.changelog]
+template_dir = ".github/changelog_templates"
+exclude_commit_patterns = [
+    "^chore\\(release\\):",
+    "^Merge",
+]
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["feat", "fix", "perf", "refactor", "docs", "style", "test", "chore"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
