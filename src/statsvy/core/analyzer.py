@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 from types import MappingProxyType
 from typing import Any
 
@@ -16,6 +17,7 @@ from rich.progress import (
 )
 from rich.text import Text
 
+from statsvy.core.performance_tracker import PerformanceTracker
 from statsvy.data.config import Config
 from statsvy.data.metrics import Metrics
 from statsvy.data.scan_result import ScanResult
@@ -46,6 +48,7 @@ class Analyzer:
         language_map_path: Path | None = None,
         custom_language_mapping: Mapping[str, Any] | None = None,
         config: Config | None = None,
+        perf_tracker: PerformanceTracker | None = None,
     ) -> None:
         """Initialize the Analyzer.
 
@@ -64,6 +67,7 @@ class Analyzer:
                 that extends or overrides entries in the YAML configuration.
                 Custom mappings win on conflicts. Defaults to None.
             config (Config | None): Optional configuration for analysis settings.
+            perf_tracker: Optional PerformanceTracker used to record I/O stats.
 
         Raises:
             ValueError: If language_map_path is provided but contains invalid
@@ -77,6 +81,8 @@ class Analyzer:
             custom_language_mapping=custom_language_mapping,
         )
         self.language_analyzer = LanguageAnalyzer(self.config)
+        # Optional tracker for I/O accounting; injected from ScanHandler
+        self._perf_tracker = perf_tracker
         if self.config.core.verbose:
             console.print("Initialized Analyzer")
 
@@ -221,7 +227,21 @@ class Analyzer:
         if file_stats["lines"] < self.config.language.min_lines_threshold:
             return
 
-        text = file.read_text(encoding="utf-8", errors="ignore")
+        # Read file contents (measure and record I/O if requested)
+        if self._perf_tracker and self._perf_tracker.is_tracking_io():
+            _start = perf_counter()
+            text = file.read_text(encoding="utf-8", errors="ignore")
+            _elapsed = perf_counter() - _start
+            try:
+                _bytes = int(file.stat().st_size)
+            except OSError:
+                _bytes = 0
+            self._perf_tracker.record_io(
+                bytes_read=_bytes, elapsed_seconds=_elapsed, path=str(file)
+            )
+        else:
+            text = file.read_text(encoding="utf-8", errors="ignore")
+
         lang = self.language_detector.detect(file)
         category = self.language_detector.get_category(lang)
 
@@ -267,9 +287,13 @@ class Analyzer:
             metrics_data["blank_lines_by_lang"].get(lang, 0) + stats["blanks"]
         )
 
-    @staticmethod
-    def _count_file_lines(file: Path) -> int:
-        """Count total lines in a file.
+    def _count_file_lines(self, file: Path) -> int:
+        """Count total lines in a file and optionally record I/O timing.
+
+        This method will record a lightweight I/O measurement when a
+        PerformanceTracker with I/O enabled has been injected. The bytes
+        attributed to the operation use ``file.stat().st_size`` to avoid
+        additional memory allocations during counting.
 
         Args:
             file: File path to count lines for.
@@ -277,8 +301,28 @@ class Analyzer:
         Returns:
             Total number of lines in the file.
         """
+        tracker = self._perf_tracker
+        start = (
+            perf_counter()
+            if (tracker is not None and tracker.is_tracking_io())
+            else None
+        )
+
         with file.open("r", encoding="utf-8", errors="ignore") as f:
-            return sum(1 for _ in f)
+            count = sum(1 for _ in f)
+
+        if start is not None and tracker is not None:
+            elapsed = perf_counter() - start
+            try:
+                bytes_read = int(file.stat().st_size)
+            except OSError:
+                bytes_read = 0
+            # record_io is a no-op when tracker not active or IO not enabled
+            tracker.record_io(
+                bytes_read=bytes_read, elapsed_seconds=elapsed, path=str(file)
+            )
+
+        return count
 
     def _is_binary_file(self, file: Path) -> bool:
         """Check if a file is binary based on its extension.

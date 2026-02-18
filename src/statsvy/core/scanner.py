@@ -1,7 +1,9 @@
 """Directory scanning utilities for Statsvy."""
 
+from contextlib import suppress
 from hashlib import sha256
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from rich.progress import (
@@ -13,6 +15,7 @@ from rich.progress import (
 )
 from rich.text import Text
 
+from statsvy.core.performance_tracker import PerformanceTracker
 from statsvy.data.config import Config
 from statsvy.data.scan_result import ScanResult
 from statsvy.utils.console import console
@@ -34,6 +37,7 @@ class Scanner:
         ignore: tuple[str, ...] = (),
         no_gitignore: bool = False,
         config: Config | None = None,
+        perf_tracker: PerformanceTracker | None = None,
     ) -> None:
         """Initialize the Scanner.
 
@@ -43,6 +47,7 @@ class Scanner:
                 Defaults to an empty tuple.
             no_gitignore: If True, don't parse .gitignore file.
             config: Optional configuration controlling scan behavior.
+            perf_tracker: Optional PerformanceTracker used to record I/O stats.
 
         Raises:
             ValueError: If the path does not exist or is not a directory.
@@ -57,6 +62,8 @@ class Scanner:
         self.root_path = path
         self.no_gitignore = no_gitignore
         self.config = config or Config.default()
+        # Optional tracker for I/O accounting
+        self._perf_tracker = perf_tracker
 
         if not no_gitignore:
             gitignore_patterns = self._parse_gitignore()
@@ -338,22 +345,32 @@ class Scanner:
 
         return None
 
-    @staticmethod
-    def _file_hash(path: Path) -> str:
-        """Compute SHA-256 hash of a file's contents.
+    def _file_hash(self, path: Path) -> str:
+        """Compute SHA-256 hash of a file's contents and optionally record I/O.
 
         Reads the file in chunks to avoid high memory usage for large files.
-
-        Args:
-            path: File path to hash.
-
-        Returns:
-            Hex digest string of the file content hash.
+        When a PerformanceTracker with I/O accounting is available the total
+        bytes and elapsed time for the read are recorded as a single I/O op.
         """
         h = sha256()
+        total = 0
+        tracker = getattr(self, "_perf_tracker", None)
+        start = (
+            perf_counter()
+            if (tracker is not None and tracker.is_tracking_io())
+            else None
+        )
         with path.open("rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):
                 h.update(chunk)
+                total += len(chunk)
+        if start is not None and tracker is not None:
+            elapsed = perf_counter() - start
+            # Fail-safe: ensure tracker failures don't break hashing
+            with suppress(Exception):
+                tracker.record_io(
+                    bytes_read=total, elapsed_seconds=elapsed, path=str(path)
+                )
         return h.hexdigest()
 
     def _within_size_bounds(self, size: int) -> bool:
