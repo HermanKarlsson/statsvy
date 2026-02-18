@@ -55,7 +55,7 @@ statsvy scan [OPTIONS] [TARGET]
 | `--percentages / --no-percentages` | | Show/hide percentage columns |
 | `--track-io / --no-track-io` | | Enable/disable I/O profiling (application-level I/O accounting: total bytes read, elapsed time, files read) |
 | `--track-mem / --no-track-mem` | | Enable/disable memory profiling (tracemalloc — peak memory) |
-| `--track-performance / --no-track-performance` | | Enable/disable combined profiling (runs both I/O and memory passes)
+| `--track-performance / --no-track-performance` | | Enable/disable combined profiling (runs both I/O and memory passes) |
 | `--profile / --no-profile` | | Run both I/O and memory profiling (dual-pass: I/O pass first for accurate I/O metrics, then memory pass) |
 | `--scan-timeout N` | `--timeout` | Maximum scan duration in seconds (default: 300) |
 | `--min-lines-threshold N` | `--min-lines` | Skip files with fewer lines than N |
