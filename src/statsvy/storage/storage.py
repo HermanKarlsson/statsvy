@@ -102,13 +102,18 @@ class Storage:
 
     @staticmethod
     def _paths_match(tracked_path: str, metrics_path: Path | str) -> bool:
-        """Check if two paths resolve to the same location."""
-        try:
-            tracked_resolved = str(Path(tracked_path).resolve())
-            metrics_resolved = str(Path(metrics_path).resolve())
-        except (OSError, ValueError):
-            tracked_resolved = tracked_path
-            metrics_resolved = str(metrics_path)
+        """Check if two paths resolve to the same location.
+
+        Use non-strict resolution to avoid failures on paths that may not be
+        present or when resolving symlinks is not possible in the test
+        environment. Comparing the fully resolved (absolute) string forms
+        prevents accidental matches for subdirectories or different
+        relative representations of the same path.
+        """
+        # Use strict=False so resolution does not raise for non-existent or
+        # indirectly accessible paths; expanduser() handles tilde paths.
+        tracked_resolved = str(Path(tracked_path).expanduser().resolve(strict=False))
+        metrics_resolved = str(Path(metrics_path).expanduser().resolve(strict=False))
 
         return tracked_resolved == metrics_resolved
 
