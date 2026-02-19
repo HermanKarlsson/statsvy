@@ -118,6 +118,11 @@ statsvy scan . --no-gitignore
 
 # Enable performance profiling
 statsvy scan . --track-performance
+# Enable performance profiling (dual-pass: I/O then memory)
+statsvy scan . --profile
+# Or profile a single category only:
+statsvy scan . --track-io    # I/O-only (bytes/time/files)
+statsvy scan . --track-mem   # memory-only (tracemalloc peak)
 
 # Set a scan timeout (seconds)
 statsvy scan . --timeout 60
