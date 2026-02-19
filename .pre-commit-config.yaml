@@ -37,3 +37,13 @@ repos:
           - style
           - test
           - chore
+          - release
+
+  - repo: local
+    hooks:
+      - id: require-release-on-main
+        name: require-release-on-main
+        entry: hooks/require_release_on_main.py
+        language: python
+        stages: [commit-msg]
+        pass_filenames: false

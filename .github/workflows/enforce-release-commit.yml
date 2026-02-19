@@ -1,0 +1,66 @@
+name: Enforce release-commit on main
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-release-prefix:
+    name: Require commit subjects to start with 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit subjects
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Event: $GITHUB_EVENT_NAME"
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "Checking commits in PR #${{ github.event.pull_request.number }}"
+            BASE_REF="${{ github.event.pull_request.base.ref }}"
+            HEAD_REF="${{ github.event.pull_request.head.ref }}"
+            git fetch origin "${BASE_REF}":base || true
+            git fetch origin "${HEAD_REF}":head || true
+            START=$(git merge-base base head)
+            COMMITS=$(git log --format=%s "$START..head") || COMMITS=""
+          else
+            echo "Checking commits in push to main"
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              # initial push — check the target commit
+              COMMITS=$(git log --format=%s "$AFTER") || COMMITS=""
+            else
+              COMMITS=$(git log --format=%s "$BEFORE..$AFTER") || COMMITS=""
+            fi
+          fi
+
+          if [ -z "${COMMITS}" ]; then
+            echo "No commits to check — OK"
+            exit 0
+          fi
+
+          echo "Commit subjects to validate:"
+          echo "$COMMITS" | nl -ba
+
+          # List any subjects that do NOT start with 'release' (case-insensitive)
+          BAD=$(echo "$COMMITS" | grep -v -i '^release' || true)
+          if [ -n "$BAD" ]; then
+            echo "\nERROR: The following commit subjects do not start with 'release':"
+            echo "$BAD" | nl -ba
+            echo "\nAll commits that land on 'main' must have a subject starting with 'release'."
+            exit 1
+          fi
+
+          echo "All commit subjects start with 'release' — OK"
