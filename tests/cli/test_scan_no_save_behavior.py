@@ -4,6 +4,7 @@ Tests verify that the --no-save flag prevents scan results from being
 saved to history, while the default behavior (or --save) does save them.
 """
 
+import json
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -137,3 +138,50 @@ class TestNoSaveBehavior:
 
         # Verify history was NOT created
         assert not history_file.exists()
+
+    def test_scan_subdirectory_of_tracked_project_does_not_save(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Integration test: scanning a subdirectory must not save to project history.
+
+        Steps:
+        1. create a tracked project (write `.statsvy/project.json`)
+        2. run `statsvy scan` in the project root (should create history)
+        3. run `statsvy scan subdir` while CWD is project root (should NOT add)
+        """
+        # Arrange: create project root with .statsvy and a subdirectory
+        statsvy_dir = tmp_path / ".statsvy"
+        statsvy_dir.mkdir()
+        (tmp_path / "test_file.py").write_text("# root file")
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "file.py").write_text("# inner file")
+
+        # project.json points to the project root
+        (statsvy_dir / "project.json").write_text(
+            json.dumps(
+                {
+                    "name": "p",
+                    "path": str(tmp_path),
+                    "date_added": "2026-02-14",
+                    "last_scan": None,
+                }
+            )
+        )
+
+        history_file = statsvy_dir / "history.json"
+
+        # Act: first scan (project root) — should create one history entry
+        result1 = _invoke_scan(runner, tmp_path)
+        assert result1.exit_code == 0
+        assert history_file.exists()
+        data = history_file.read_text()
+        assert "metrics" in data
+
+        # Act: scan a subdirectory while CWD is still project root
+        result2 = _invoke_scan(runner, tmp_path, "subdir")
+        assert result2.exit_code == 0
+
+        # Assert: history still contains only the original entry
+        parsed = json.loads(history_file.read_text())
+        assert len(parsed) == 1
