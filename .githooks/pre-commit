@@ -1,0 +1,8 @@
+#!/bin/sh
+# Prevent direct commits on main (local safeguard)
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+if [ "$branch" = "main" ]; then
+  echo "ERROR: Direct commits to 'main' are blocked. Create a branch and open a PR instead."
+  exit 1
+fi
+exit 0

@@ -1,0 +1,14 @@
+name: Block direct pushes to main
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  prevent-direct-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block direct pushes to main
+        run: |
+          echo "Direct pushes to 'main' are not allowed. Open a PR against 'dev' instead." >&2
+          exit 1

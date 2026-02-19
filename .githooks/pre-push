@@ -1,0 +1,11 @@
+#!/bin/sh
+# Prevent pushing to main (local safeguard)
+# Reads lines of refs from stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "ERROR: Pushing directly to 'main' is blocked. Create a PR to merge into 'main'."
+    exit 1
+  fi
+done
+exit 0
