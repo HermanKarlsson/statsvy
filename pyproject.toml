@@ -63,7 +63,7 @@ path = "src/statsvy/__init__.py"
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-exclude = ["typings"]
+exclude = ["typings", "hooks"]
 
 [tool.ruff.lint]
 select = [
