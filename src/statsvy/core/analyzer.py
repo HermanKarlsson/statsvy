@@ -119,11 +119,18 @@ class Analyzer:
             if f not in getattr(scan_result, "duplicate_files", ())
         )
 
+        # Provide optional per-file metadata (from Scanner) to avoid
+        # reopening files during analysis. If absent, Analyzer falls back
+        # to the previous behavior and will read files directly.
+        file_data_map = getattr(scan_result, "file_data", None)
+
         if show_progress:
-            self._analyze_with_progress(files_to_analyze, metrics_data, timeout_checker)
+            self._analyze_with_progress(
+                files_to_analyze, metrics_data, timeout_checker, file_data_map
+            )
         else:
             self._analyze_without_progress(
-                files_to_analyze, metrics_data, timeout_checker
+                files_to_analyze, metrics_data, timeout_checker, file_data_map
             )
 
         if self.config.core.verbose:
@@ -153,6 +160,7 @@ class Analyzer:
         files: tuple[Path, ...],
         metrics_data: dict[str, Any],
         timeout_checker: TimeoutChecker | None,
+        file_data_map: dict[Path, dict[str, object]] | None = None,
     ) -> None:
         """Analyze files with progress bar display.
 
@@ -160,6 +168,7 @@ class Analyzer:
             files: File paths to analyze.
             metrics_data: Mutable metrics accumulator to update.
             timeout_checker: Optional timeout checker to enforce analysis time limits.
+            file_data_map: Optional mapping of Path -> precomputed file metadata.
 
         Raises:
             TimeoutError: If timeout_checker detects timeout exceeded.
@@ -178,13 +187,14 @@ class Analyzer:
                     timeout_checker.check("file analysis")
                 progress.update(task, advance=1)
                 if file.is_file():
-                    self._process_file(file, metrics_data)
+                    self._process_file(file, metrics_data, file_data_map)
 
     def _analyze_without_progress(
         self,
         files: tuple[Path, ...],
         metrics_data: dict[str, Any],
         timeout_checker: TimeoutChecker | None,
+        file_data_map: dict[Path, dict[str, object]] | None = None,
     ) -> None:
         """Analyze files without progress bar display.
 
@@ -192,6 +202,7 @@ class Analyzer:
             files: File paths to analyze.
             metrics_data: Mutable metrics accumulator to update.
             timeout_checker: Optional timeout checker to enforce analysis time limits.
+            file_data_map: Optional mapping of Path -> precomputed file metadata.
 
         Raises:
             TimeoutError: If timeout_checker detects timeout exceeded.
@@ -200,34 +211,65 @@ class Analyzer:
             if timeout_checker:
                 timeout_checker.check("file analysis")
             if file.is_file():
-                self._process_file(file, metrics_data)
+                self._process_file(file, metrics_data, file_data_map)
 
-    def _process_file(self, file: Path, metrics_data: dict[str, Any]) -> None:
+    def _get_text_and_line_count(
+        self, file: Path, file_info: dict[str, object] | None
+    ) -> tuple[str, int]:
+        """Return (text, line_count) for a file using optional precomputed info.
+
+        This centralizes text/line retrieval and keeps _process_file simple.
+        """
+        if file_info is not None:
+            # Prefer already-read string values
+            text_val = file_info.get("text")
+            if isinstance(text_val, str):
+                lines_val = file_info.get("lines")
+                lines = int(lines_val) if isinstance(lines_val, int) else 0
+                return text_val, lines
+
+            # If only bytes available, decode once
+            b_val = file_info.get("bytes")
+            if isinstance(b_val, bytes | bytearray):
+                decoded = b_val.decode("utf-8", errors="ignore")
+                return decoded, len(decoded.splitlines())
+
+        # Fallback: read from filesystem
+        text = file.read_text(encoding="utf-8", errors="ignore")
+        return text, len(text.splitlines())
+
+    def _process_file(
+        self,
+        file: Path,
+        metrics_data: dict[str, Any],
+        file_data_map: dict[Path, dict[str, object]] | None = None,
+    ) -> None:
         """Process a single file and update metrics data.
 
-        Args:
-            file: File path to analyze.
-            metrics_data: Mutable metrics accumulator to update.
+        Uses optional precomputed file metadata from `file_data_map` when
+        available to avoid reopening files. Falls back to the previous
+        behavior when metadata is not present.
         """
-        # Skip binary files based on extension
-        if self._is_binary_file(file):
+        file_info = file_data_map.get(file) if file_data_map else None
+
+        # Skip binary files (prefer scan-provided info, else use extension)
+        if file_info is not None and file_info.get("is_binary"):
+            return
+        if file_info is None and self._is_binary_file(file):
             return
 
-        file_stats = {
-            "lines": self._count_file_lines(file),
-        }
+        text, lines = self._get_text_and_line_count(file, file_info)
 
         # Skip files that don't meet minimum lines threshold
-        if file_stats["lines"] < self.config.language.min_lines_threshold:
+        if lines < self.config.language.min_lines_threshold:
             return
 
-        text = file.read_text(encoding="utf-8", errors="ignore")
         lang = self.language_detector.detect(file)
         category = self.language_detector.get_category(lang)
 
-        file_stats["comments"], file_stats["blanks"] = self.language_analyzer.analyze(
-            file, text
-        )
+        comments, blanks = self.language_analyzer.analyze(file, text)
+
+        file_stats = {"lines": lines, "comments": comments, "blanks": blanks}
 
         self._update_metrics(metrics_data, lang, category, file_stats)
 

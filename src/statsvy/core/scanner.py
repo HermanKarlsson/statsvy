@@ -120,6 +120,7 @@ class Scanner:
             scan_data["total_size_bytes"],
             tuple(scan_data["scanned_files"]),
             tuple(scan_data.get("duplicate_files", [])),
+            scan_data.get("file_data", None),
         )
 
     def _scan_with_progress(
@@ -195,41 +196,27 @@ class Scanner:
             # For duplicate detection (hash -> first seen path)
             "_hash_index": {},
             "duplicate_files": [],
+            # Optional per-file metadata to avoid re-reading files later
+            "file_data": {},
         }
 
     def _process_path(self, path: Path, scan_data: dict[str, Any]) -> None:
         """Process a single path and update scan data if it's a valid file.
 
-        Duplicate detection is performed for files that meet the
-        configured size threshold (`Config.files.duplicate_threshold_bytes`).
-        Matching files (size + SHA-256) are recorded in
-        ``scan_data['duplicate_files']`` but still included in the scanned
-        files list (scan totals continue to reflect on-disk state).
-
-        Args:
-            path: Filesystem path to inspect.
-            scan_data: Mutable scan accumulator to update.
+        This method performs validation (ignore rules, file/size checks),
+        updates aggregate counters, and delegates per-file metadata
+        collection to a helper so the method remains concise.
         """
         if self._should_ignore(path):
-            # Always record skip counts (used for short, non-verbose summaries);
-            # verbose mode will display details.
             self._record_skipped_path(path, scan_data)
-            if self.config.core.verbose:
-                # Verbose mode may present additional context elsewhere.
-                pass
             return
 
         if not path.is_file():
             return
 
-        # Respect configured min/max file size bounds (MB -> bytes)
         size = path.stat().st_size
         if not self._within_size_bounds(size):
-            # Record skipped files even when not verbose so we can show a
-            # concise summary to users who did not request -v.
             self._record_skipped_path(path, scan_data)
-            if self.config.core.verbose:
-                pass
             return
 
         if self.config.core.verbose:
@@ -239,10 +226,14 @@ class Scanner:
         scan_data["total_files"] += 1
         scan_data["total_size_bytes"] += size
 
-        # Detect duplicates using size + SHA-256 (fast reject by size).
-        # This check is delegated to a helper to reduce method complexity.
-        self._maybe_record_duplicate(path, size, scan_data)
+        # Gather and persist per-file metadata (separated to reduce
+        # complexity of this method).
+        file_data = self._gather_file_data(path, size)
+        scan_data.setdefault("file_data", {})[path] = file_data
 
+        # Duplicate detection and scanned_files append remain simple and
+        # delegated to their helpers.
+        self._maybe_record_duplicate(path, size, scan_data)
         scan_data["scanned_files"].append(path)
 
     def _log_scan_complete(self, scan_data: dict[str, Any]) -> None:
@@ -356,6 +347,42 @@ class Scanner:
                 h.update(chunk)
         return h.hexdigest()
 
+    def _gather_file_data(self, path: Path, size: int) -> dict[str, object]:
+        """Collect per-file metadata used by Analyzer to avoid re-reading files.
+
+        Returns a small dict containing: is_binary (bool), lines (int),
+        text (str | None) and bytes (bytes | None).
+        """
+        file_data: dict[str, object] = {
+            "is_binary": False,
+            "lines": 0,
+            "text": None,
+            "bytes": None,
+        }
+
+        suffix = path.suffix.lower()
+        is_binary_ext = suffix in getattr(self.config.scan, "binary_extensions", ())
+
+        needs_hash = size >= self.config.files.duplicate_threshold_bytes
+
+        if not is_binary_ext:
+            if needs_hash:
+                b = path.read_bytes()
+                file_data["bytes"] = b
+                text = b.decode("utf-8", errors="ignore")
+                file_data["text"] = text
+                file_data["lines"] = len(text.splitlines())
+            else:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+                file_data["text"] = text
+                file_data["lines"] = len(text.splitlines())
+        else:
+            file_data["is_binary"] = True
+            if needs_hash:
+                file_data["bytes"] = path.read_bytes()
+
+        return file_data
+
     def _within_size_bounds(self, size: int) -> bool:
         """Return True if `size` (bytes) is within configured min/max bounds.
 
@@ -391,7 +418,18 @@ class Scanner:
         if size < self.config.files.duplicate_threshold_bytes:
             return
 
-        key = f"{size}:" + self._file_hash(path)
+        content_bytes: bytes | None = None
+        fd = scan_data.get("file_data")
+        info = fd.get(path) if fd is not None else None
+        if info is not None:
+            content_bytes = info.get("bytes")
+
+        if content_bytes is not None:
+            h = sha256(content_bytes).hexdigest()
+        else:
+            h = self._file_hash(path)
+
+        key = f"{size}:" + h
         first = scan_data["_hash_index"].get(key)
         if first is None:
             scan_data["_hash_index"][key] = path
