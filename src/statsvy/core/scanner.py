@@ -1,9 +1,7 @@
 """Directory scanning utilities for Statsvy."""
 
-from contextlib import suppress
 from hashlib import sha256
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 from rich.progress import (
@@ -15,7 +13,6 @@ from rich.progress import (
 )
 from rich.text import Text
 
-from statsvy.core.performance_tracker import PerformanceTracker
 from statsvy.data.config import Config
 from statsvy.data.scan_result import ScanResult
 from statsvy.utils.console import console
@@ -37,7 +34,6 @@ class Scanner:
         ignore: tuple[str, ...] = (),
         no_gitignore: bool = False,
         config: Config | None = None,
-        perf_tracker: PerformanceTracker | None = None,
     ) -> None:
         """Initialize the Scanner.
 
@@ -47,7 +43,6 @@ class Scanner:
                 Defaults to an empty tuple.
             no_gitignore: If True, don't parse .gitignore file.
             config: Optional configuration controlling scan behavior.
-            perf_tracker: Optional PerformanceTracker used to record I/O stats.
 
         Raises:
             ValueError: If the path does not exist or is not a directory.
@@ -62,8 +57,6 @@ class Scanner:
         self.root_path = path
         self.no_gitignore = no_gitignore
         self.config = config or Config.default()
-        # Optional tracker for I/O accounting
-        self._perf_tracker = perf_tracker
 
         if not no_gitignore:
             gitignore_patterns = self._parse_gitignore()
@@ -127,7 +120,6 @@ class Scanner:
             scan_data["total_size_bytes"],
             tuple(scan_data["scanned_files"]),
             tuple(scan_data.get("duplicate_files", [])),
-            scan_data.get("file_contents") or None,
         )
 
     def _scan_with_progress(
@@ -200,25 +192,31 @@ class Scanner:
             "total_size_bytes": 0,
             "scanned_files": [],
             "skipped_by_dir": {},
+            # For duplicate detection (hash -> first seen path)
             "_hash_index": {},
             "duplicate_files": [],
-            "file_contents": {},
         }
 
     def _process_path(self, path: Path, scan_data: dict[str, Any]) -> None:
         """Process a single path and update scan data if it's a valid file.
 
-        This method delegates specific responsibilities to small helpers to
-        keep complexity and statement counts low (see `_increment_scan_totals`
-        and `_store_file_content_if_text`).
+        Duplicate detection is performed for files that meet the
+        configured size threshold (`Config.files.duplicate_threshold_bytes`).
+        Matching files (size + SHA-256) are recorded in
+        ``scan_data['duplicate_files']`` but still included in the scanned
+        files list (scan totals continue to reflect on-disk state).
 
         Args:
             path: Filesystem path to inspect.
             scan_data: Mutable scan accumulator to update.
         """
         if self._should_ignore(path):
-            # Record skip and return early.
+            # Always record skip counts (used for short, non-verbose summaries);
+            # verbose mode will display details.
             self._record_skipped_path(path, scan_data)
+            if self.config.core.verbose:
+                # Verbose mode may present additional context elsewhere.
+                pass
             return
 
         if not path.is_file():
@@ -227,63 +225,25 @@ class Scanner:
         # Respect configured min/max file size bounds (MB -> bytes)
         size = path.stat().st_size
         if not self._within_size_bounds(size):
+            # Record skipped files even when not verbose so we can show a
+            # concise summary to users who did not request -v.
             self._record_skipped_path(path, scan_data)
+            if self.config.core.verbose:
+                pass
             return
 
         if self.config.core.verbose:
             console.print(Text(f"Processing: {path}", style="cyan"))
 
-        # Update totals and optionally pre-read text for Analyzer reuse.
-        self._increment_scan_totals(size, scan_data)
-        self._store_file_content_if_text(path, size, scan_data)
-
-        # Duplicate detection (may use pre-read content to avoid extra I/O).
-        self._maybe_record_duplicate(path, size, scan_data)
-        scan_data["scanned_files"].append(path)
-
-    def _increment_scan_totals(self, size: int, scan_data: dict[str, Any]) -> None:
-        """Increment aggregate counters for a scanned file.
-
-        Args:
-            size: File size in bytes.
-            scan_data: Mutable scan accumulator to update.
-        """
+        # Update totals (always counted)
         scan_data["total_files"] += 1
         scan_data["total_size_bytes"] += size
 
-    def _store_file_content_if_text(
-        self, path: Path, size: int, scan_data: dict[str, Any]
-    ) -> None:
-        """Read and store file text for non-binary files.
+        # Detect duplicates using size + SHA-256 (fast reject by size).
+        # This check is delegated to a helper to reduce method complexity.
+        self._maybe_record_duplicate(path, size, scan_data)
 
-        When a PerformanceTracker with I/O tracking is present the read is
-        recorded as an I/O event. Any read failure is tolerated and stored
-        as ``None`` so Analyzer can fall back to on-demand reads.
-
-        Args:
-            path: File path to read.
-            size: File size in bytes (used for I/O accounting).
-            scan_data: Mutable scan accumulator to update.
-        """
-        if path.suffix.lower() in self.config.scan.binary_extensions:
-            return
-
-        tracker = getattr(self, "_perf_tracker", None)
-        try:
-            if tracker is not None and tracker.is_tracking_io():
-                start = perf_counter()
-                text = path.read_text(encoding="utf-8", errors="ignore")
-                elapsed = perf_counter() - start
-                with suppress(Exception):
-                    tracker.record_io(
-                        bytes_read=size, elapsed_seconds=elapsed, path=str(path)
-                    )
-            else:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-
-            scan_data.setdefault("file_contents", {})[path] = text
-        except Exception:
-            scan_data.setdefault("file_contents", {})[path] = None
+        scan_data["scanned_files"].append(path)
 
     def _log_scan_complete(self, scan_data: dict[str, Any]) -> None:
         """Log scan completion summary in verbose mode.
@@ -378,32 +338,22 @@ class Scanner:
 
         return None
 
-    def _file_hash(self, path: Path) -> str:
-        """Compute SHA-256 hash of a file's contents and optionally record I/O.
+    @staticmethod
+    def _file_hash(path: Path) -> str:
+        """Compute SHA-256 hash of a file's contents.
 
         Reads the file in chunks to avoid high memory usage for large files.
-        When a PerformanceTracker with I/O accounting is available the total
-        bytes and elapsed time for the read are recorded as a single I/O op.
+
+        Args:
+            path: File path to hash.
+
+        Returns:
+            Hex digest string of the file content hash.
         """
         h = sha256()
-        total = 0
-        tracker = getattr(self, "_perf_tracker", None)
-        start = (
-            perf_counter()
-            if (tracker is not None and tracker.is_tracking_io())
-            else None
-        )
         with path.open("rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):
                 h.update(chunk)
-                total += len(chunk)
-        if start is not None and tracker is not None:
-            elapsed = perf_counter() - start
-            # Fail-safe: ensure tracker failures don't break hashing
-            with suppress(Exception):
-                tracker.record_io(
-                    bytes_read=total, elapsed_seconds=elapsed, path=str(path)
-                )
         return h.hexdigest()
 
     def _within_size_bounds(self, size: int) -> bool:
@@ -437,23 +387,11 @@ class Scanner:
 
         This helper encapsulates the duplicate-detection mutation so the
         main path-processing method remains simple and testable.
-
-        If the file's text was pre-read and stored in ``scan_data['file_contents']``
-        we compute the hash from that text to avoid a second disk read.
         """
         if size < self.config.files.duplicate_threshold_bytes:
             return
 
-        # Prefer in-memory content (if present) to avoid re-reading the file.
-        content_map = scan_data.get("file_contents", {})
-        if path in content_map and content_map[path] is not None:
-            h = sha256()
-            # Use the same encoding as read_text used above
-            h.update(content_map[path].encode("utf-8", errors="ignore"))
-            key = f"{size}:" + h.hexdigest()
-        else:
-            key = f"{size}:" + self._file_hash(path)
-
+        key = f"{size}:" + self._file_hash(path)
         first = scan_data["_hash_index"].get(key)
         if first is None:
             scan_data["_hash_index"][key] = path

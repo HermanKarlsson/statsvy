@@ -67,7 +67,7 @@ class TestPerformanceTrackingCLI:
     ) -> None:
         """Test scan command with --track-performance flag.
 
-        Should display performance metrics including both I/O and memory (alias).
+        Should display performance metrics including memory.
         """
         with runner.isolated_filesystem():
             result = runner.invoke(
@@ -83,23 +83,15 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Status messages for each profiling pass should be present
-            assert "Running I/O profiling" in result.output
-            assert "Running memory profiling" in result.output
-
-            # Both I/O and memory metrics should be present for the profile alias
+            # Performance metrics should be present
             assert "Memory:" in result.output
-            assert "I/O:" in result.output
             assert "peak" in result.output
             assert "MB" in result.output
 
     def test_scan_with_profile_alias(
         self, runner: CliRunner, test_project_dir: Path
     ) -> None:
-        """`--profile` is an alias for running both I/O and memory profiling.
-
-        The command must run I/O profiling first, then memory profiling.
-        """
+        """`--profile` should behave as an alias for --track-performance."""
         with runner.isolated_filesystem():
             result = runner.invoke(
                 main,
@@ -114,19 +106,7 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Status messages for each profiling pass should be present
-            assert "Running I/O profiling" in result.output
-            assert "Running memory profiling" in result.output
-
-            # No metrics should be printed between the two passes
-            start = result.output.index("Running I/O profiling")
-            mid = result.output.index("Running memory profiling", start)
-            between = result.output[start:mid]
-            assert "Memory:" not in between and "I/O:" not in between
-
-            # Final output must include both Memory and I/O summaries
             assert "Memory:" in result.output
-            assert "I/O:" in result.output
             assert "peak" in result.output
 
     def test_scan_track_performance_includes_execution_time(
@@ -237,9 +217,10 @@ class TestPerformanceTrackingCLI:
             lines = result.output.split("\n")
             memory_lines = [line for line in lines if "Memory:" in line]
 
-            assert len(memory_lines) >= 1
-            # Ensure at least one Memory line contains 'peak' and a unit
-            assert any("peak" in m and ("MB" in m or "B" in m) for m in memory_lines)
+            assert len(memory_lines) == 1
+            memory_output = memory_lines[0]
+            # Should contain peak
+            assert "peak" in memory_output
 
     def test_decline_track_performance_disables_tracking(
         self, runner: CliRunner, test_project_dir: Path
@@ -259,56 +240,8 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Neither Memory nor I/O metrics should be present when user declines
+            # Memory metrics should NOT be present when user declines
             assert "Memory:" not in result.output
-            assert "I/O:" not in result.output
-
-    def test_scan_with_track_io_flag(
-        self, runner: CliRunner, test_project_dir: Path
-    ) -> None:
-        """`--track-io` should display I/O metrics only."""
-        with runner.isolated_filesystem():
-            result = runner.invoke(
-                main,
-                [
-                    "scan",
-                    "--dir",
-                    str(test_project_dir),
-                    "--no-save",
-                    "--track-io",
-                ],
-                input="y\n",
-            )
-
-            assert result.exit_code == 0
-            # Status message should indicate I/O profiling is running
-            assert "Running I/O profiling" in result.output
-            assert "I/O:" in result.output
-            # Memory summary may still be shown (peak reported as 0 when not
-            # tracked). Do not require its absence.
-
-    def test_scan_with_track_mem_flag(
-        self, runner: CliRunner, test_project_dir: Path
-    ) -> None:
-        """`--track-mem` should display memory metrics only."""
-        with runner.isolated_filesystem():
-            result = runner.invoke(
-                main,
-                [
-                    "scan",
-                    "--dir",
-                    str(test_project_dir),
-                    "--no-save",
-                    "--track-mem",
-                ],
-                input="y\n",
-            )
-
-            assert result.exit_code == 0
-            # Status message should indicate memory profiling is running
-            assert "Running memory profiling" in result.output
-            assert "Memory:" in result.output
-            assert "I/O:" not in result.output
 
     @patch("statsvy.cli.scan_handler.PerformanceMetricsFormatter")
     @patch("statsvy.cli.scan_handler.PerformanceTracker")
@@ -342,7 +275,7 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Verify tracker was used for both passes (I/O + memory)
-            assert mock_tracker_class.call_count == 2
-            assert mock_tracker.start.call_count == 2
-            assert mock_tracker.stop.call_count == 2
+            # Verify tracker was used
+            mock_tracker_class.assert_called_once()
+            mock_tracker.start.assert_called_once()
+            mock_tracker.stop.assert_called_once()

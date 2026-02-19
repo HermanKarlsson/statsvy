@@ -122,24 +122,3 @@ class TestPerformanceTracker:
 
             assert isinstance(metrics, PerformanceMetrics)
             assert not tracker.is_active()
-
-    def test_record_io_accumulates_counters(self) -> None:
-        """record_io should accumulate bytes, time and file count when enabled."""
-        tracker = PerformanceTracker(track_memory=False, track_io=True)
-
-        tracker.start()
-        tracker.record_io(1024, 0.01)
-        tracker.record_io(2048, 0.02)
-        metrics = tracker.stop()
-
-        assert metrics.total_bytes_read == 3072
-        assert metrics.files_read_count == 2
-        assert metrics.total_io_time_seconds >= 0.03
-
-    def test_is_tracking_io_flag(self) -> None:
-        """is_tracking_io() reflects constructor flag."""
-        t1 = PerformanceTracker(track_memory=True, track_io=False)
-        assert not t1.is_tracking_io()
-
-        t2 = PerformanceTracker(track_memory=False, track_io=True)
-        assert t2.is_tracking_io()

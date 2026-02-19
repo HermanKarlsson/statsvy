@@ -6,7 +6,7 @@ file statistics.
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, TypedDict, Unpack, cast
+from typing import TypedDict, Unpack, cast
 
 import click
 from rich import inspect
@@ -43,8 +43,6 @@ class ScanKwargs(TypedDict, total=False):
         show_contributors: Whether to show contributors in git statistics.
         max_contributors: Maximum number of contributors to display.
         track_performance: If True, enables performance metric tracking.
-        track_io: If True, enables I/O profiling only.
-        track_mem: If True, enables memory profiling only.
         scan_timeout: Maximum scan duration in seconds.
         min_lines_threshold: Minimum number of lines for a file to be included.
         no_deps: If True, skips dependency analysis.
@@ -70,8 +68,6 @@ class ScanKwargs(TypedDict, total=False):
     show_contributors: bool | None
     max_contributors: int | None
     track_performance: bool
-    track_io: bool
-    track_mem: bool
     scan_timeout: int | None
     min_lines_threshold: int | None
     no_deps: bool
@@ -97,8 +93,6 @@ def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> No
         core_color=not no_color if no_color else None,
         core_show_progress=not no_progress if no_progress else None,
         core_track_performance=kwargs.get("track_performance"),
-        core_track_io=kwargs.get("track_io"),
-        core_track_mem=kwargs.get("track_mem"),
         scan_follow_symlinks=kwargs.get("follow_symlinks"),
         scan_max_depth=kwargs.get("max_depth"),
         scan_min_file_size_mb=kwargs.get("min_file_size"),
@@ -114,27 +108,6 @@ def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> No
         display_truncate_paths=kwargs.get("truncate_paths"),
         display_show_percentages=kwargs.get("percentages"),
     )
-
-
-def _normalize_profile_flags(kwargs: dict[str, Any]) -> None:
-    """Normalize `--profile` / `--track-performance` aliases.
-
-    Only override the explicit `track_*` flags when they are ``None`` so
-    that user-provided values (True/False) take precedence.
-    """
-    # Determine effective profile value: explicit --profile takes precedence
-    effective = (
-        kwargs.get("profile")
-        if kwargs.get("profile") is not None
-        else kwargs.get("track_performance")
-    )
-
-    if effective is None:
-        return
-
-    for key in ("track_performance", "track_io", "track_mem"):
-        if kwargs.get(key) is None:
-            kwargs[key] = effective
 
 
 def _setup_compare_config(
@@ -270,24 +243,14 @@ def main(ctx: click.Context, config: Path | None) -> None:
     help="Show or hide percentage columns in output",
 )
 @click.option(
-    "--track-io/--no-track-io",
-    default=None,
-    help="Enable or disable I/O profiling (omit to use config file)",
-)
-@click.option(
-    "--track-mem/--no-track-mem",
-    default=None,
-    help="Enable or disable memory profiling (use --track-mem for memory-only)",
-)
-@click.option(
     "--track-performance/--no-track-performance",
     default=None,
-    help="Alias for --profile (kept for compatibility)",
+    help="Enable or disable memory profiling (omit to use config file)",
 )
 @click.option(
     "--profile/--no-profile",
     default=None,
-    help="Run both I/O and memory profiling (developer mode)",
+    help="Alias for --track-performance",
 )
 @click.option(
     "--scan-timeout",
@@ -323,8 +286,9 @@ def scan(
             precedence over the `--dir` option.
         **kwargs: Command-line options.
     """
-    # Normalize profile/alias flags into explicit track_io/track_mem values
-    _normalize_profile_flags(kwargs)
+    # Merge alias flags: --profile aliases --track-performance
+    if kwargs.get("profile") is not None and kwargs.get("track_performance") is None:
+        kwargs["track_performance"] = kwargs.get("profile")
 
     # Honor --quiet by silencing the shared console for this invocation
     prev_quiet = console.quiet

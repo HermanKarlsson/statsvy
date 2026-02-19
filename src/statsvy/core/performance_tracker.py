@@ -13,34 +13,39 @@ from statsvy.data.performance_metrics import PerformanceMetrics
 class PerformanceTracker:
     """Tracks performance metrics during scan operations.
 
-    Supports both memory tracking (via tracemalloc) and lightweight
-    application-level I/O accounting (bytes/time/files). The tracker is
-    intentionally cheap for I/O accounting so the measurement overhead is
-    minimal when enabled.
+    This class encapsulates all performance tracking logic, providing a clean
+    API for measuring application performance. Currently uses tracemalloc to
+    track memory usage; future extensions can add CPU time, I/O statistics,
+    cache hit rates, etc.
+
+    Warning:
+        Memory tracking using tracemalloc can add SIGNIFICANT overhead:
+        - Small projects: 10-30% slower
+        - Large projects with many files: 10-20x slower
+        - The overhead comes from tracemalloc tracking every memory allocation
+
+        Only enable performance tracking when you specifically need to profile
+        memory usage. For timing information only, rely on the default execution
+        time output which has negligible overhead.
+
+    Note:
+        - tracemalloc tracks Python memory allocations only (not C extensions)
+        - Thread-safe for single-threaded use; not recommended for concurrent
+          profiling without external synchronization
     """
 
-    def __init__(self, track_memory: bool = True, track_io: bool = False) -> None:
+    def __init__(self) -> None:
         """Initialize the performance tracker.
 
-        Args:
-            track_memory: Whether to enable tracemalloc-based memory tracking.
-                Defaults to True for backward compatibility.
-            track_io: Whether to enable application-level I/O accounting.
-                Defaults to False.
+        Tracker is inactive until start() is called.
         """
         self._started = False
-        self._track_memory = track_memory
-        self._track_io = track_io
-
-        # I/O counters
-        self._total_bytes_read: int = 0
-        self._total_io_time_seconds: float = 0.0
-        self._files_read_count: int = 0
 
     def start(self) -> None:
         """Start performance tracking.
 
-        Initializes tracemalloc only when memory tracking was requested.
+        Initializes tracemalloc and resets statistics. Should be called
+        once before the operation to be tracked.
 
         Raises:
             RuntimeError: If tracker is already running.
@@ -48,41 +53,8 @@ class PerformanceTracker:
         if self._started:
             raise RuntimeError("PerformanceTracker is already running")
 
-        if self._track_memory:
-            tracemalloc.start()
+        tracemalloc.start()
         self._started = True
-
-    def record_io(
-        self, bytes_read: int, elapsed_seconds: float, path: str | None = None
-    ) -> None:
-        """Record a single application-level I/O operation.
-
-        This method is intentionally minimal: it performs a few arithmetic
-        updates and returns quickly. It is a no-op if the tracker is not
-        active or I/O accounting was not enabled.
-
-        Args:
-            bytes_read: Number of bytes read by the operation.
-            elapsed_seconds: Wall-clock time spent performing the operation.
-            path: Optional path (string) for diagnostic purposes. Not stored.
-        """
-        # Fast-path: only update counters when tracker started and I/O enabled
-        if not self._started or not self._track_io:
-            return
-
-        if bytes_read:
-            self._total_bytes_read += int(bytes_read)
-        if elapsed_seconds:
-            self._total_io_time_seconds += float(elapsed_seconds)
-        self._files_read_count += 1
-
-        # Preserve API surface for callers that pass a path (avoid unused-arg)
-        if path is not None:
-            _ = path  # intentionally not stored; used only for diagnostics
-
-    def is_tracking_io(self) -> bool:
-        """Return True when I/O accounting is enabled for this tracker."""
-        return self._track_io
 
     def stop(self) -> PerformanceMetrics:
         """Stop performance tracking and return collected metrics.
@@ -96,19 +68,12 @@ class PerformanceTracker:
         if not self._started:
             raise RuntimeError("PerformanceTracker has not been started")
 
-        peak_memory = 0
-        if self._track_memory:
-            _, peak_memory = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-
+        # Get peak memory usage (in bytes)
+        _, peak_memory = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
         self._started = False
 
-        return PerformanceMetrics(
-            peak_memory_bytes=peak_memory,
-            total_bytes_read=self._total_bytes_read,
-            total_io_time_seconds=self._total_io_time_seconds,
-            files_read_count=self._files_read_count,
-        )
+        return PerformanceMetrics(peak_memory_bytes=peak_memory)
 
     def is_active(self) -> bool:
         """Check if tracker is currently active.

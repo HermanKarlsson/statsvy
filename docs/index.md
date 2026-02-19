@@ -12,7 +12,7 @@ A command-line tool for scanning projects and collecting comprehensive source co
 - **Comparison** — Compare metrics side-by-side between two projects
 - **Multiple Formats** — Display results as table, JSON, or Markdown
 - **Git Integration** — Repository statistics including commits, branches, and contributors
-- **Performance Profiling** — Optional I/O and memory profiling. Use `--track-io` to collect application-level I/O metrics (bytes/time/files), `--track-mem` to collect peak memory via tracemalloc, or use `--profile` / `--track-performance` to run both in a dual-pass (I/O first) for accurate measurements.
+- **Performance Profiling** — Optional memory usage tracking during scans
 - **Configurable** — Settings via `pyproject.toml`, `statsvy.toml`, environment variables, or CLI flags
 
 ## Quick Example

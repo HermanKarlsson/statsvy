@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from time import perf_counter
 from types import MappingProxyType
 from typing import Any
 
@@ -17,7 +16,6 @@ from rich.progress import (
 )
 from rich.text import Text
 
-from statsvy.core.performance_tracker import PerformanceTracker
 from statsvy.data.config import Config
 from statsvy.data.metrics import Metrics
 from statsvy.data.scan_result import ScanResult
@@ -48,7 +46,6 @@ class Analyzer:
         language_map_path: Path | None = None,
         custom_language_mapping: Mapping[str, Any] | None = None,
         config: Config | None = None,
-        perf_tracker: PerformanceTracker | None = None,
     ) -> None:
         """Initialize the Analyzer.
 
@@ -67,7 +64,6 @@ class Analyzer:
                 that extends or overrides entries in the YAML configuration.
                 Custom mappings win on conflicts. Defaults to None.
             config (Config | None): Optional configuration for analysis settings.
-            perf_tracker: Optional PerformanceTracker used to record I/O stats.
 
         Raises:
             ValueError: If language_map_path is provided but contains invalid
@@ -81,8 +77,6 @@ class Analyzer:
             custom_language_mapping=custom_language_mapping,
         )
         self.language_analyzer = LanguageAnalyzer(self.config)
-        # Optional tracker for I/O accounting; injected from ScanHandler
-        self._perf_tracker = perf_tracker
         if self.config.core.verbose:
             console.print("Initialized Analyzer")
 
@@ -95,14 +89,10 @@ class Analyzer:
         categorizes them by their programming language. Language detection
         is performed using the LanguageDetector.
 
-        The Analyzer will prefer file contents provided in ``scan_result.file_contents``
-        (populated by the Scanner) to avoid re-reading files from disk.
-
         Args:
             scan_result (ScanResult): Metadata from the initial directory scan
                 including file paths to analyze, total file count, and total
-                size in bytes. May optionally contain a ``file_contents``
-                mapping (Path -> text) to reuse pre-read file data.
+                size in bytes.
             timeout_checker: Optional timeout checker to enforce analysis time limits.
 
         Returns:
@@ -129,16 +119,11 @@ class Analyzer:
             if f not in getattr(scan_result, "duplicate_files", ())
         )
 
-        # Optional mapping provided by Scanner to avoid re-reading files
-        file_contents = getattr(scan_result, "file_contents", None)
-
         if show_progress:
-            self._analyze_with_progress(
-                files_to_analyze, metrics_data, timeout_checker, file_contents
-            )
+            self._analyze_with_progress(files_to_analyze, metrics_data, timeout_checker)
         else:
             self._analyze_without_progress(
-                files_to_analyze, metrics_data, timeout_checker, file_contents
+                files_to_analyze, metrics_data, timeout_checker
             )
 
         if self.config.core.verbose:
@@ -168,7 +153,6 @@ class Analyzer:
         files: tuple[Path, ...],
         metrics_data: dict[str, Any],
         timeout_checker: TimeoutChecker | None,
-        file_contents: Mapping[Path, str] | None,
     ) -> None:
         """Analyze files with progress bar display.
 
@@ -176,7 +160,6 @@ class Analyzer:
             files: File paths to analyze.
             metrics_data: Mutable metrics accumulator to update.
             timeout_checker: Optional timeout checker to enforce analysis time limits.
-            file_contents: Optional pre-read contents mapping from Scanner.
 
         Raises:
             TimeoutError: If timeout_checker detects timeout exceeded.
@@ -195,15 +178,13 @@ class Analyzer:
                     timeout_checker.check("file analysis")
                 progress.update(task, advance=1)
                 if file.is_file():
-                    text = file_contents.get(file) if file_contents else None
-                    self._process_file(file, metrics_data, text)
+                    self._process_file(file, metrics_data)
 
     def _analyze_without_progress(
         self,
         files: tuple[Path, ...],
         metrics_data: dict[str, Any],
         timeout_checker: TimeoutChecker | None,
-        file_contents: Mapping[Path, str] | None,
     ) -> None:
         """Analyze files without progress bar display.
 
@@ -211,7 +192,6 @@ class Analyzer:
             files: File paths to analyze.
             metrics_data: Mutable metrics accumulator to update.
             timeout_checker: Optional timeout checker to enforce analysis time limits.
-            file_contents: Optional pre-read contents mapping from Scanner.
 
         Raises:
             TimeoutError: If timeout_checker detects timeout exceeded.
@@ -220,50 +200,28 @@ class Analyzer:
             if timeout_checker:
                 timeout_checker.check("file analysis")
             if file.is_file():
-                text = file_contents.get(file) if file_contents else None
-                self._process_file(file, metrics_data, text)
+                self._process_file(file, metrics_data)
 
-    def _process_file(
-        self, file: Path, metrics_data: dict[str, Any], text: str | None = None
-    ) -> None:
+    def _process_file(self, file: Path, metrics_data: dict[str, Any]) -> None:
         """Process a single file and update metrics data.
 
         Args:
             file: File path to analyze.
             metrics_data: Mutable metrics accumulator to update.
-            text: Optional pre-read file contents supplied by Scanner. When
-                provided, Analyzer will not attempt to read the file from
-                disk (avoids duplicate I/O).
         """
         # Skip binary files based on extension
         if self._is_binary_file(file):
             return
 
-        # If text not provided, read it (and optionally record I/O). If text
-        # was provided by Scanner we reuse it and do not perform any file I/O
-        # here.
-        if text is None:
-            if self._perf_tracker and self._perf_tracker.is_tracking_io():
-                _start = perf_counter()
-                text = file.read_text(encoding="utf-8", errors="ignore")
-                _elapsed = perf_counter() - _start
-                try:
-                    _bytes = int(file.stat().st_size)
-                except OSError:
-                    _bytes = 0
-                self._perf_tracker.record_io(
-                    bytes_read=_bytes, elapsed_seconds=_elapsed, path=str(file)
-                )
-            else:
-                text = file.read_text(encoding="utf-8", errors="ignore")
+        file_stats = {
+            "lines": self._count_file_lines(file),
+        }
 
-        # Count lines from the available text (avoid a second read)
-        lines = len(text.splitlines())
-        if lines < self.config.language.min_lines_threshold:
+        # Skip files that don't meet minimum lines threshold
+        if file_stats["lines"] < self.config.language.min_lines_threshold:
             return
 
-        file_stats = {"lines": lines}
-
+        text = file.read_text(encoding="utf-8", errors="ignore")
         lang = self.language_detector.detect(file)
         category = self.language_detector.get_category(lang)
 
@@ -309,13 +267,9 @@ class Analyzer:
             metrics_data["blank_lines_by_lang"].get(lang, 0) + stats["blanks"]
         )
 
-    def _count_file_lines(self, file: Path) -> int:
-        """Count total lines in a file and optionally record I/O timing.
-
-        This method will record a lightweight I/O measurement when a
-        PerformanceTracker with I/O enabled has been injected. The bytes
-        attributed to the operation use ``file.stat().st_size`` to avoid
-        additional memory allocations during counting.
+    @staticmethod
+    def _count_file_lines(file: Path) -> int:
+        """Count total lines in a file.
 
         Args:
             file: File path to count lines for.
@@ -323,28 +277,8 @@ class Analyzer:
         Returns:
             Total number of lines in the file.
         """
-        tracker = self._perf_tracker
-        start = (
-            perf_counter()
-            if (tracker is not None and tracker.is_tracking_io())
-            else None
-        )
-
         with file.open("r", encoding="utf-8", errors="ignore") as f:
-            count = sum(1 for _ in f)
-
-        if start is not None and tracker is not None:
-            elapsed = perf_counter() - start
-            try:
-                bytes_read = int(file.stat().st_size)
-            except OSError:
-                bytes_read = 0
-            # record_io is a no-op when tracker not active or IO not enabled
-            tracker.record_io(
-                bytes_read=bytes_read, elapsed_seconds=elapsed, path=str(file)
-            )
-
-        return count
+            return sum(1 for _ in f)
 
     def _is_binary_file(self, file: Path) -> bool:
         """Check if a file is binary based on its extension.

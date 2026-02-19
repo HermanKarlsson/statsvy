@@ -10,13 +10,10 @@ class TestPerformanceMetrics:
     """Tests for PerformanceMetrics data class."""
 
     def test_performance_metrics_creation(self) -> None:
-        """Test creating a PerformanceMetrics instance and defaults for new fields."""
+        """Test creating a PerformanceMetrics instance."""
         metrics = PerformanceMetrics(peak_memory_bytes=50_000_000)
 
         assert metrics.peak_memory_bytes == 50_000_000
-        assert metrics.total_bytes_read == 0
-        assert metrics.total_io_time_seconds == 0.0
-        assert metrics.files_read_count == 0
 
     def test_peak_memory_mb(self) -> None:
         """Test peak_memory_mb conversion via formatter."""

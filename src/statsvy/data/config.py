@@ -36,8 +36,6 @@ class CoreConfig:
     color: bool
     show_progress: bool
     track_performance: bool
-    track_io: bool
-    track_mem: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,8 +175,6 @@ class Config:
                 color=True,
                 show_progress=True,
                 track_performance=False,
-                track_io=False,
-                track_mem=False,
             ),
             scan=ScanConfig(
                 follow_symlinks=False,
