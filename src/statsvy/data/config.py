@@ -11,6 +11,17 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from statsvy.data.comparison_config import ComparisonConfig
+from statsvy.data.core_config import CoreConfig
+from statsvy.data.dependencies_config import DependenciesConfig
+from statsvy.data.display_config import DisplayConfig
+from statsvy.data.files_config import FilesConfig
+from statsvy.data.git_config import GitConfig
+from statsvy.data.language_config import LanguageConfig
+from statsvy.data.performance_config import PerformanceConfig
+from statsvy.data.scan_config import ScanConfig
+from statsvy.data.storage_config import StorageConfig
+
 
 def _mapping_proxy(data: Mapping[str, Any] | None) -> Mapping[str, Any]:
     """Return an immutable mapping proxy for configuration values.
@@ -22,124 +33,6 @@ def _mapping_proxy(data: Mapping[str, Any] | None) -> Mapping[str, Any]:
         An immutable mapping proxy.
     """
     return MappingProxyType(dict(data or {}))
-
-
-@dataclass(frozen=True, slots=True)
-class PerformanceConfig:
-    """Performance-related flags grouped together.
-
-    - track_mem: measure memory (tracemalloc)
-    - track_io: measure I/O throughput (MB/s)
-    """
-
-    track_mem: bool
-    track_io: bool
-
-
-@dataclass(frozen=True, slots=True)
-class CoreConfig:
-    """Core application settings."""
-
-    name: str
-    path: str
-    default_format: str
-    out_dir: str
-    verbose: bool
-    color: bool
-    show_progress: bool
-    performance: PerformanceConfig
-
-
-@dataclass(frozen=True, slots=True)
-class ScanConfig:
-    """File system scanning settings.
-
-    Attributes:
-        min_file_size_mb: Minimum file size (in MB) to include in the scan.
-            Files smaller than this will be skipped when scanning.
-    """
-
-    follow_symlinks: bool
-    max_depth: int
-    min_file_size_mb: float
-    max_file_size_mb: float
-    respect_gitignore: bool
-    include_hidden: bool
-    timeout_seconds: int
-    ignore_patterns: tuple[str, ...]
-    binary_extensions: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class LanguageConfig:
-    """Language detection and line-counting settings."""
-
-    custom_language_mapping: Mapping[str, Any]
-    exclude_languages: tuple[str, ...]
-    min_lines_threshold: int
-    count_comments: bool
-    count_blank_lines: bool
-    count_docstrings: bool
-
-
-@dataclass(frozen=True, slots=True)
-class StorageConfig:
-    """Persistence settings."""
-
-    auto_save: bool
-
-
-@dataclass(frozen=True, slots=True)
-class GitConfig:
-    """Git integration settings."""
-
-    enabled: bool
-    include_stats: bool
-    include_branches: tuple[str, ...]
-    detect_authors: bool
-    show_contributors: bool
-    max_contributors: int
-
-
-@dataclass(frozen=True, slots=True)
-class DisplayConfig:
-    """Terminal display preferences."""
-
-    truncate_paths: bool
-    show_percentages: bool
-
-
-@dataclass(frozen=True, slots=True)
-class ComparisonConfig:
-    """Comparison and delta settings."""
-
-    show_unchanged: bool
-
-
-@dataclass(frozen=True, slots=True)
-class DependenciesConfig:
-    """Dependency analysis settings.
-
-    Attributes:
-        include_dependencies: Whether to analyze dependencies (default True).
-        exclude_dev_dependencies: Whether to exclude dev dependencies from analysis.
-    """
-
-    include_dependencies: bool = True
-    exclude_dev_dependencies: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class FilesConfig:
-    """File-level analysis settings.
-
-    Duplicate detection is now a core behaviour and cannot be disabled.
-    The configuration keeps only the threshold for when to compute hashes.
-    """
-
-    duplicate_threshold_bytes: int
-    find_large_files: bool
-    large_file_threshold_mb: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,3 +141,18 @@ class Config:
                 large_file_threshold_mb=10,
             ),
         )
+
+
+__all__ = [
+    "ComparisonConfig",
+    "Config",
+    "CoreConfig",
+    "DependenciesConfig",
+    "DisplayConfig",
+    "FilesConfig",
+    "GitConfig",
+    "LanguageConfig",
+    "PerformanceConfig",
+    "ScanConfig",
+    "StorageConfig",
+]
