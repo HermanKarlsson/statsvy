@@ -116,9 +116,6 @@ statsvy scan . --include-hidden
 # Ignore .gitignore rules
 statsvy scan . --no-gitignore
 
-# Enable performance profiling
-statsvy scan . --track-performance
-
 # Set a scan timeout (seconds)
 statsvy scan . --timeout 60
 

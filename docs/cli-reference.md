@@ -53,8 +53,10 @@ statsvy scan [OPTIONS] [TARGET]
 | `--no-save` | | Don't save scan results to history |
 | `--truncate-paths / --no-truncate-paths` | | Truncate displayed file paths |
 | `--percentages / --no-percentages` | | Show/hide percentage columns |
-| `--track-performance / --no-track-performance` | | Enable/disable memory profiling |
-| `--profile / --no-profile` | | Alias for `--track-performance` |
+| `--track-performance / --no-track-performance` | | Enable/disable both I/O + memory profiling (backward-compatible alias) |
+| `--track-io / --no-track-io` | | Enable/disable I/O throughput profiling (shows `IO: X.XX MiB/s`) |
+| `--track-mem / --no-track-mem` | | Enable/disable memory profiling (shows `Memory: peak ...`) |
+| `--profile / --no-profile` | | Enable/disable both I/O + memory profiling |
 | `--scan-timeout N` | `--timeout` | Maximum scan duration in seconds (default: 300) |
 | `--min-lines-threshold N` | `--min-lines` | Skip files with fewer lines than N |
 | `--no-deps` | | Skip dependency analysis |
@@ -77,6 +79,15 @@ statsvy scan . --git --max-depth 3
 
 # Fast scan (no deps, no git)
 statsvy scan . --no-deps --no-git
+
+# I/O-only profiling
+statsvy scan . --track-io
+
+# Memory-only profiling
+statsvy scan . --track-mem
+
+# Combined profiling (single scan)
+statsvy scan . --profile
 ```
 
 ---

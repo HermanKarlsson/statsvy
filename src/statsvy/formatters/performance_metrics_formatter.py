@@ -29,16 +29,26 @@ class PerformanceMetricsFormatter:
     def format_text(metrics: PerformanceMetrics) -> str:
         """Return formatted text representation of performance metrics.
 
-        Uses the shared ``format_size`` utility so memory is displayed using
-        the same adaptive units as other size outputs.
-
-        Args:
-            metrics: The PerformanceMetrics instance.
-
-        Returns:
-            Human-readable string with peak memory usage.
+        Behavior:
+        - I/O-only metrics: show `IO: X.XX MiB/s` (no memory line).
+        - Memory-only metrics: show `Memory: peak ...`.
+        - Combined metrics: show memory then I/O on separate lines.
         """
-        return f"Memory: peak {format_size(metrics.peak_memory_bytes)}"
+        parts: list[str] = []
+
+        # Memory line (only if a non-zero peak was observed)
+        if metrics.peak_memory_bytes:
+            parts.append(f"Memory: peak {format_size(metrics.peak_memory_bytes)}")
+
+        # I/O line (present when io_mb_s was measured)
+        if metrics.io_mb_s is not None:
+            parts.append(f"IO: {metrics.io_mb_s:.2f} MiB/s")
+
+        # Fallback to a memory line if nothing else is present
+        if not parts:
+            return f"Memory: peak {format_size(0)}"
+
+        return "\n".join(parts)
 
     @staticmethod
     def to_dict(metrics: PerformanceMetrics) -> dict[str, Any]:
@@ -50,7 +60,15 @@ class PerformanceMetricsFormatter:
         Returns:
             Dictionary with performance metric fields for serialization.
         """
-        return {
+        result: dict[str, Any] = {
             "peak_memory_bytes": metrics.peak_memory_bytes,
             "peak_memory_mb": PerformanceMetricsFormatter.peak_memory_mb(metrics),
         }
+
+        # Optional I/O fields
+        if metrics.bytes_read:
+            result["bytes_read"] = metrics.bytes_read
+        if metrics.io_mb_s is not None:
+            result["io_mb_s"] = round(metrics.io_mb_s, 2)
+
+        return result

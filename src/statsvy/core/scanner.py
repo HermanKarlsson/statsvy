@@ -2,7 +2,7 @@
 
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from rich.progress import (
     BarColumn,
@@ -120,6 +120,7 @@ class Scanner:
             scan_data["total_size_bytes"],
             tuple(scan_data["scanned_files"]),
             tuple(scan_data.get("duplicate_files", [])),
+            scan_data.get("bytes_read", 0),
             scan_data.get("file_data", None),
         )
 
@@ -196,6 +197,8 @@ class Scanner:
             # For duplicate detection (hash -> first seen path)
             "_hash_index": {},
             "duplicate_files": [],
+            # Total bytes actually read from disk by the scanner
+            "bytes_read": 0,
             # Optional per-file metadata to avoid re-reading files later
             "file_data": {},
         }
@@ -227,8 +230,9 @@ class Scanner:
         scan_data["total_size_bytes"] += size
 
         # Gather and persist per-file metadata (separated to reduce
-        # complexity of this method).
-        file_data = self._gather_file_data(path, size)
+        # complexity of this method). _gather_file_data will increment
+        # bytes_read when it actually reads file content.
+        file_data = self._gather_file_data(path, size, scan_data)
         scan_data.setdefault("file_data", {})[path] = file_data
 
         # Duplicate detection and scanned_files append remain simple and
@@ -347,11 +351,17 @@ class Scanner:
                 h.update(chunk)
         return h.hexdigest()
 
-    def _gather_file_data(self, path: Path, size: int) -> dict[str, object]:
+    def _gather_file_data(
+        self, path: Path, size: int, scan_data: dict[str, object]
+    ) -> dict[str, object]:
         """Collect per-file metadata used by Analyzer to avoid re-reading files.
 
         Returns a small dict containing: is_binary (bool), lines (int),
         text (str | None) and bytes (bytes | None).
+
+        Also increments the running "bytes_read" counter in *scan_data* when
+        file contents are actually read from disk so callers can compute I/O
+        throughput (MB/s) accurately.
         """
         file_data: dict[str, object] = {
             "is_binary": False,
@@ -368,18 +378,27 @@ class Scanner:
         if not is_binary_ext:
             if needs_hash:
                 b = path.read_bytes()
+                # Track bytes actually read
+                prev = cast(int, scan_data.get("bytes_read", 0))
+                scan_data["bytes_read"] = prev + len(b)
                 file_data["bytes"] = b
                 text = b.decode("utf-8", errors="ignore")
                 file_data["text"] = text
                 file_data["lines"] = len(text.splitlines())
             else:
                 text = path.read_text(encoding="utf-8", errors="ignore")
+                # Count bytes read based on filesystem size for simplicity
+                prev = cast(int, scan_data.get("bytes_read", 0))
+                scan_data["bytes_read"] = prev + size
                 file_data["text"] = text
                 file_data["lines"] = len(text.splitlines())
         else:
             file_data["is_binary"] = True
             if needs_hash:
-                file_data["bytes"] = path.read_bytes()
+                b = path.read_bytes()
+                prev = cast(int, scan_data.get("bytes_read", 0))
+                scan_data["bytes_read"] = prev + len(b)
+                file_data["bytes"] = b
 
         return file_data
 

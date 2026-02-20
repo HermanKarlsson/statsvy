@@ -24,6 +24,19 @@ class TestConfigLoaderBasics:
         loader = ConfigLoader()
         assert loader.config is not None
 
+    def test_default_config_includes_performance_settings(self) -> None:
+        """Default Config should include nested performance flags.
+
+        Ensures the new PerformanceConfig is present under core.performance
+        and both tracking flags default to False.
+        """
+        loader = ConfigLoader()
+        perf = loader.config.core.performance
+        assert hasattr(perf, "track_mem")
+        assert hasattr(perf, "track_io")
+        assert perf.track_mem is False
+        assert perf.track_io is False
+
     def test_load_missing_file_keeps_defaults(self, tmp_path: Path) -> None:
         """Loading non-existent file should keep Config defaults."""
         missing_file = tmp_path / "nonexistent.toml"
