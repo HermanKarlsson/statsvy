@@ -43,6 +43,8 @@ class ScanKwargs(TypedDict, total=False):
         show_contributors: Whether to show contributors in git statistics.
         max_contributors: Maximum number of contributors to display.
         track_performance: If True, enables performance metric tracking.
+        track_io: If True, enables I/O throughput measurement.
+        track_mem: Alias for memory profiling (maps to --track-performance).
         scan_timeout: Maximum scan duration in seconds.
         min_lines_threshold: Minimum number of lines for a file to be included.
         no_deps: If True, skips dependency analysis.
@@ -68,6 +70,8 @@ class ScanKwargs(TypedDict, total=False):
     show_contributors: bool | None
     max_contributors: int | None
     track_performance: bool
+    track_io: bool
+    track_mem: bool
     scan_timeout: int | None
     min_lines_threshold: int | None
     no_deps: bool
@@ -92,7 +96,10 @@ def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> No
         core_out_dir=str(output.parent) if output else None,
         core_color=not no_color if no_color else None,
         core_show_progress=not no_progress if no_progress else None,
-        core_track_performance=kwargs.get("track_performance"),
+        core_performance_track_mem=kwargs.get("track_mem")
+        if kwargs.get("track_mem") is not None
+        else kwargs.get("track_performance"),
+        core_performance_track_io=kwargs.get("track_io"),
         scan_follow_symlinks=kwargs.get("follow_symlinks"),
         scan_max_depth=kwargs.get("max_depth"),
         scan_min_file_size_mb=kwargs.get("min_file_size"),
@@ -138,6 +145,47 @@ def _setup_compare_config(
         display_truncate_paths=truncate_paths,
         display_show_percentages=percentages,
     )
+
+
+def _apply_profile_alias(kwargs: dict) -> None:
+    """Apply `--profile` alias to explicit tracking flags.
+
+    Only set values that the user hasn't explicitly provided (i.e. `None`).
+    """
+    profile_val = kwargs.get("profile")
+    if profile_val is None:
+        return
+
+    if kwargs.get("track_performance") is None:
+        kwargs["track_performance"] = profile_val
+    if kwargs.get("track_io") is None:
+        kwargs["track_io"] = profile_val
+    if kwargs.get("track_mem") is None:
+        kwargs["track_mem"] = profile_val
+
+
+def _apply_track_performance_mapping(kwargs: dict) -> None:
+    """When legacy `--track-performance` is used, enable both trackers.
+
+    Respect explicit user overrides for `--track-io`/`--track-mem`.
+    """
+    tp = kwargs.get("track_performance")
+    if tp is None:
+        return
+
+    if kwargs.get("track_io") is None:
+        kwargs["track_io"] = tp
+    if kwargs.get("track_mem") is None:
+        kwargs["track_mem"] = tp
+
+
+def _normalize_scan_profile_flags(kwargs: dict) -> None:
+    """Normalize legacy/profile CLI flags into explicit tracking flags.
+
+    Mutates *kwargs* in-place to ensure consistent downstream handling.
+    """
+    _apply_profile_alias(kwargs)
+    _apply_track_performance_mapping(kwargs)
 
 
 @click.group(
@@ -245,12 +293,25 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option(
     "--track-performance/--no-track-performance",
     default=None,
-    help="Enable or disable memory profiling (omit to use config file)",
+    help=(
+        "Enable or disable profiling (both I/O and memory). "
+        "Performs a double run when enabled. (omit to use config file)"
+    ),
 )
 @click.option(
     "--profile/--no-profile",
     default=None,
-    help="Alias for --track-performance",
+    help="Alias for --track-performance (runs I/O + memory profiling)",
+)
+@click.option(
+    "--track-io/--no-track-io",
+    default=None,
+    help="Enable or disable I/O throughput measurement (MiB/s).",
+)
+@click.option(
+    "--track-mem/--no-track-mem",
+    default=None,
+    help="Enable or disable memory profiling (alias for --track-performance).",
 )
 @click.option(
     "--scan-timeout",
@@ -286,9 +347,8 @@ def scan(
             precedence over the `--dir` option.
         **kwargs: Command-line options.
     """
-    # Merge alias flags: --profile aliases --track-performance
-    if kwargs.get("profile") is not None and kwargs.get("track_performance") is None:
-        kwargs["track_performance"] = kwargs.get("profile")
+    # Normalize profile/alias flags (kept in helper for readability).
+    _normalize_scan_profile_flags(kwargs)
 
     # Honor --quiet by silencing the shared console for this invocation
     prev_quiet = console.quiet

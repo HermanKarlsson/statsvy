@@ -45,3 +45,13 @@ class TestScanReturnType:
             (Path(tmpdir) / "a.txt").write_text("x")
             result = Scanner(tmpdir).scan()
             assert all(isinstance(f, Path) for f in result.scanned_files)
+
+    def test_scan_result_includes_bytes_read(self) -> None:
+        """ScanResult should include a bytes_read integer."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "a.txt"
+            p.write_text("hello")
+            result = Scanner(tmpdir).scan()
+            assert isinstance(result.bytes_read, int)
+            # bytes_read should be >= total_size_bytes for the files actually read
+            assert result.bytes_read >= result.total_size_bytes

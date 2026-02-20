@@ -72,7 +72,12 @@ General application settings.
 | `verbose` | `bool` | `false` | Enable verbose logging |
 | `color` | `bool` | `true` | Enable colored output |
 | `show_progress` | `bool` | `true` | Show progress indicators |
-| `track_performance` | `bool` | `false` | Track and display performance metrics |
+| `performance_track_mem` | `bool` | `false` | Enable memory profiling |
+| `performance_track_io` | `bool` | `false` | Enable I/O throughput profiling |
+
+!!! note "Legacy key"
+    `track_performance` is still supported for backward compatibility.
+    When set, it enables both memory and I/O profiling.
 
 ### `[tool.statsvy.scan]`
 
@@ -176,7 +181,8 @@ default_format = "json"
 verbose = true
 color = true
 show_progress = true
-track_performance = false
+performance_track_mem = false
+performance_track_io = false
 
 [tool.statsvy.scan]
 max_depth = 5

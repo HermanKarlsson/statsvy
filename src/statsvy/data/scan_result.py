@@ -18,6 +18,7 @@ class ScanResult:
     total_size_bytes: int
     scanned_files: tuple[Path, ...]
     duplicate_files: tuple[Path, ...] = ()
+    bytes_read: int = 0
     # Optional per-file data populated by Scanner to avoid re-reading files.
     # Keys are file paths and values contain precomputed metadata used by
     # Analyzer (e.g. text, line count). This field is optional to preserve

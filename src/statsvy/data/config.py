@@ -25,6 +25,18 @@ def _mapping_proxy(data: Mapping[str, Any] | None) -> Mapping[str, Any]:
 
 
 @dataclass(frozen=True, slots=True)
+class PerformanceConfig:
+    """Performance-related flags grouped together.
+
+    - track_mem: measure memory (tracemalloc)
+    - track_io: measure I/O throughput (MB/s)
+    """
+
+    track_mem: bool
+    track_io: bool
+
+
+@dataclass(frozen=True, slots=True)
 class CoreConfig:
     """Core application settings."""
 
@@ -35,7 +47,7 @@ class CoreConfig:
     verbose: bool
     color: bool
     show_progress: bool
-    track_performance: bool
+    performance: PerformanceConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +186,7 @@ class Config:
                 verbose=False,
                 color=True,
                 show_progress=True,
-                track_performance=False,
+                performance=PerformanceConfig(track_mem=False, track_io=False),
             ),
             scan=ScanConfig(
                 follow_symlinks=False,

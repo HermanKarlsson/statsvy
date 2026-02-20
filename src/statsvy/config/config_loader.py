@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from typing import TypeVar
 
 from rich.text import Text
 
@@ -13,6 +14,8 @@ from statsvy.config.config_value_converter import (
 )
 from statsvy.data.config import Config
 from statsvy.utils.console import console
+
+_SectionT = TypeVar("_SectionT")
 
 
 class ConfigLoader:
@@ -150,22 +153,56 @@ class ConfigLoader:
     ) -> None:
         """Update a specific section setting if it exists.
 
-        Args:
-            section: Configuration section name.
-            setting: Setting name within the section.
-            value: New value for the setting.
-            source: Source identifier for logging.
+        This method delegates the heavy-lifting to focused helper methods so
+        complexity and branching are easier to test and reason about.
         """
         section_obj = getattr(self.config, section, None)
-        if section_obj is None or not hasattr(section_obj, setting):
+        if section_obj is None:
             return
+
+        # Try direct attribute update (e.g. `core.verbose`). If handled,
+        # stop further processing.
+        if self._try_update_direct_setting(
+            section, section_obj, setting, value, source
+        ):
+            return
+
+        # Try nested update (format: <nested>_<setting>), e.g.:
+        # `core.performance_track_mem` -> core.performance.track_mem
+        if self._try_update_nested_setting(
+            section, section_obj, setting, value, source
+        ):
+            return
+
+        # Legacy mapping for old `core.track_performance` key.
+        if section == "core" and setting == "track_performance":
+            self._handle_legacy_track_performance(section, section_obj, value, source)
+            return
+
+        # Unknown setting — ignore silently
+        return
+
+    def _try_update_direct_setting(
+        self,
+        section: str,
+        section_obj: _SectionT,
+        setting: str,
+        value: ConfigInput,
+        source: str,
+    ) -> bool:
+        """Attempt to update a top-level attribute on *section_obj*.
+
+        Returns True when the key was recognised and handled (whether or not
+        the update succeeded). Returns False if the setting does not exist
+        on *section_obj* so callers can try other handlers.
+        """
+        if not hasattr(section_obj, setting):
+            return False
 
         current_value = getattr(section_obj, setting)
         try:
             normalized = ConfigValueConverter.normalize_value(value, current_value)
         except (TypeError, ValueError) as exc:
-            # Do not abort loading on single invalid value; surface a warning
-            # and skip the offending update.
             console.print(
                 Text("Warning: ignoring invalid configuration value for ")
                 + Text(f"{section}.{setting}", style="magenta")
@@ -173,17 +210,108 @@ class ConfigLoader:
                 + Text(source, style="cyan")
                 + Text(f": {exc}", style="yellow")
             )
-            return
+            return True
 
-        # Merge binary_extensions with defaults instead of replacing
+        # Special-case merge for binary_extensions
         if section == "scan" and setting == "binary_extensions":
             normalized = self._merge_binary_extensions(current_value, normalized)
 
-        new_section = replace(section_obj, **{setting: normalized})
-        self.config = replace(self.config, **{section: new_section})
-
+        self._replace_section(section, **{setting: normalized})
         if self.config.core.verbose:
             self._log_config_update(setting, normalized, source)
+        return True
+
+    def _try_update_nested_setting(
+        self,
+        section: str,
+        section_obj: _SectionT,
+        setting: str,
+        value: ConfigInput,
+        source: str,
+    ) -> bool:
+        """Handle nested updates in the format `<nested>_<setting>`.
+
+        Returns True when handled, False otherwise.
+        """
+        if "_" not in setting:
+            return False
+
+        nested, nested_setting = setting.split("_", 1)
+        if not hasattr(section_obj, nested):
+            return False
+
+        nested_obj = getattr(section_obj, nested)
+        if not hasattr(nested_obj, nested_setting):
+            return False
+
+        current_value = getattr(nested_obj, nested_setting)
+        try:
+            normalized = ConfigValueConverter.normalize_value(value, current_value)
+        except (TypeError, ValueError) as exc:
+            console.print(
+                Text("Warning: ignoring invalid configuration value for ")
+                + Text(f"{section}.{setting}", style="magenta")
+                + Text(" from ")
+                + Text(source, style="cyan")
+                + Text(f": {exc}", style="yellow")
+            )
+            return True
+
+        new_nested = replace(nested_obj, **{nested_setting: normalized})
+        self._replace_section(section, **{nested: new_nested})
+        if self.config.core.verbose:
+            self._log_config_update(setting, normalized, source)
+        return True
+
+    def _handle_legacy_track_performance(
+        self, section: str, section_obj: _SectionT, value: ConfigInput, source: str
+    ) -> bool:
+        """Map legacy `core.track_performance` to new performance flags.
+
+        Updates `core.performance.track_mem` and
+        `core.performance.track_io` for backward compatibility.
+        """
+        perf_obj = getattr(section_obj, "performance", None)
+        if perf_obj is None or not hasattr(perf_obj, "track_mem"):
+            return False
+
+        normalized = ConfigValueConverter.normalize_value(value, perf_obj.track_mem)
+        new_perf = replace(perf_obj, track_mem=normalized, track_io=normalized)
+        # Update the statically-typed `core` section so replace() receives a
+        # concrete dataclass instance (avoids type-checker complaints).
+        new_section = replace(self.config.core, performance=new_perf)
+        self.config = replace(self.config, **{section: new_section})
+        if self.config.core.verbose:
+            self._log_config_update("track_performance", normalized, source)
+        return True
+
+    def _replace_section(self, section: str, **updates: ConfigInput) -> None:
+        """Replace a top-level config section using dataclasses.replace.
+
+        Args:
+            section: Section name (e.g. ``core``, ``scan``).
+            **updates: Field updates applied to the selected section.
+
+        Raises:
+            AssertionError: If section name is unknown.
+        """
+        sections = {
+            "core": self.config.core,
+            "scan": self.config.scan,
+            "language": self.config.language,
+            "storage": self.config.storage,
+            "git": self.config.git,
+            "display": self.config.display,
+            "comparison": self.config.comparison,
+            "dependencies": self.config.dependencies,
+            "files": self.config.files,
+        }
+        section_obj = sections.get(section)
+        if section_obj is None:
+            raise AssertionError(f"Unhandled config section: {section}")
+
+        new_section = replace(section_obj, **updates)
+        self.config = replace(self.config, **{section: new_section})
 
     @staticmethod
     def _merge_binary_extensions(

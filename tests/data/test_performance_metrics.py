@@ -67,6 +67,9 @@ class TestPerformanceMetrics:
         # Verify the slots contain the expected fields
         slots = PerformanceMetrics.__slots__
         assert "peak_memory_bytes" in slots
+        # New optional I/O fields should also be present
+        assert "bytes_read" in slots
+        assert "io_mb_s" in slots
 
     def test_zero_memory_metrics(self) -> None:
         """Test metrics with zero memory values."""

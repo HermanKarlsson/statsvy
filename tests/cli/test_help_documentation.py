@@ -116,6 +116,8 @@ class TestHelpDocumentation:
         assert "--timeout" in help_out
         assert "--min-lines" in help_out
         assert "--profile" in help_out
+        assert "--track-io" in help_out
+        assert "--track-mem" in help_out
         assert "--quiet" in help_out
 
     def test_config_help_exits_zero(self, runner: CliRunner) -> None:
