@@ -42,7 +42,7 @@ type:
 # Run tests
 test:
     @echo "Running tests..."
-    uv run pytest -v --cov=statsvy --cov-report=term-missing
+    uv run pytest -n auto -v --cov=statsvy --cov-report=term-missing
 
 # Run with checks
 run: check
