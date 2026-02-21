@@ -30,10 +30,12 @@ class PerformanceConfig:
 
     - track_mem: measure memory (tracemalloc)
     - track_io: measure I/O throughput (MB/s)
+    - track_cpu: measure process CPU usage (without psutil)
     """
 
     track_mem: bool
     track_io: bool
+    track_cpu: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +188,11 @@ class Config:
                 verbose=False,
                 color=True,
                 show_progress=True,
-                performance=PerformanceConfig(track_mem=False, track_io=False),
+                performance=PerformanceConfig(
+                    track_mem=False,
+                    track_io=False,
+                    track_cpu=False,
+                ),
             ),
             scan=ScanConfig(
                 follow_symlinks=False,

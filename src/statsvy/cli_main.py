@@ -44,7 +44,8 @@ class ScanKwargs(TypedDict, total=False):
         max_contributors: Maximum number of contributors to display.
         track_performance: If True, enables performance metric tracking.
         track_io: If True, enables I/O throughput measurement.
-        track_mem: Alias for memory profiling (maps to --track-performance).
+        track_mem: If True, enables memory profiling.
+        track_cpu: If True, enables CPU profiling.
         scan_timeout: Maximum scan duration in seconds.
         min_lines_threshold: Minimum number of lines for a file to be included.
         no_deps: If True, skips dependency analysis.
@@ -72,6 +73,7 @@ class ScanKwargs(TypedDict, total=False):
     track_performance: bool
     track_io: bool
     track_mem: bool
+    track_cpu: bool
     scan_timeout: int | None
     min_lines_threshold: int | None
     no_deps: bool
@@ -100,6 +102,7 @@ def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> No
         if kwargs.get("track_mem") is not None
         else kwargs.get("track_performance"),
         core_performance_track_io=kwargs.get("track_io"),
+        core_performance_track_cpu=kwargs.get("track_cpu"),
         scan_follow_symlinks=kwargs.get("follow_symlinks"),
         scan_max_depth=kwargs.get("max_depth"),
         scan_min_file_size_mb=kwargs.get("min_file_size"),
@@ -162,6 +165,8 @@ def _apply_profile_alias(kwargs: dict) -> None:
         kwargs["track_io"] = profile_val
     if kwargs.get("track_mem") is None:
         kwargs["track_mem"] = profile_val
+    if kwargs.get("track_cpu") is None:
+        kwargs["track_cpu"] = profile_val
 
 
 def _apply_track_performance_mapping(kwargs: dict) -> None:
@@ -177,6 +182,8 @@ def _apply_track_performance_mapping(kwargs: dict) -> None:
         kwargs["track_io"] = tp
     if kwargs.get("track_mem") is None:
         kwargs["track_mem"] = tp
+    if kwargs.get("track_cpu") is None:
+        kwargs["track_cpu"] = tp
 
 
 def _normalize_scan_profile_flags(kwargs: dict) -> None:
@@ -294,14 +301,15 @@ def main(ctx: click.Context, config: Path | None) -> None:
     "--track-performance/--no-track-performance",
     default=None,
     help=(
-        "Enable or disable profiling (both I/O and memory). "
-        "Performs a double run when enabled. (omit to use config file)"
+        "Enable or disable profiling (I/O, memory, and CPU). "
+        "Performs separate runs per enabled metric. "
+        "(omit to use config file)"
     ),
 )
 @click.option(
     "--profile/--no-profile",
     default=None,
-    help="Alias for --track-performance (runs I/O + memory profiling)",
+    help="Alias for --track-performance (runs I/O + memory + CPU profiling)",
 )
 @click.option(
     "--track-io/--no-track-io",
@@ -311,7 +319,12 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option(
     "--track-mem/--no-track-mem",
     default=None,
-    help="Enable or disable memory profiling (alias for --track-performance).",
+    help="Enable or disable memory profiling.",
+)
+@click.option(
+    "--track-cpu/--no-track-cpu",
+    default=None,
+    help="Enable or disable CPU profiling.",
 )
 @click.option(
     "--scan-timeout",

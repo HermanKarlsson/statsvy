@@ -56,7 +56,8 @@ statsvy scan [OPTIONS] [TARGET]
 | `--track-performance / --no-track-performance` | | Enable/disable both I/O + memory profiling (backward-compatible alias) |
 | `--track-io / --no-track-io` | | Enable/disable I/O throughput profiling (shows `IO: X.XX MiB/s`) |
 | `--track-mem / --no-track-mem` | | Enable/disable memory profiling (shows `Memory: peak ...`) |
-| `--profile / --no-profile` | | Enable/disable both I/O + memory profiling |
+| `--track-cpu / --no-track-cpu` | | Enable/disable CPU profiling (shows process CPU time + CPU%) |
+| `--profile / --no-profile` | | Enable/disable full profiling (I/O + memory + CPU, separate scans) |
 | `--scan-timeout N` | `--timeout` | Maximum scan duration in seconds (default: 300) |
 | `--min-lines-threshold N` | `--min-lines` | Skip files with fewer lines than N |
 | `--no-deps` | | Skip dependency analysis |
@@ -86,8 +87,18 @@ statsvy scan . --track-io
 # Memory-only profiling
 statsvy scan . --track-mem
 
-# Combined profiling (single scan)
+# CPU-only profiling
+statsvy scan . --track-cpu
+
+# Combined profiling (three scans)
 statsvy scan . --profile
+
+# Legacy alias (same as --profile)
+statsvy scan . --track-performance
+
+# CPU percentage semantics
+# CPU% (single-core) = cpu_seconds / wall_seconds * 100
+# CPU% (all-cores) = CPU% (single-core) / logical_cpu_count
 ```
 
 ---

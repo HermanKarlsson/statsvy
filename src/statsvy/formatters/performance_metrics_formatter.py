@@ -32,7 +32,8 @@ class PerformanceMetricsFormatter:
         Behavior:
         - I/O-only metrics: show `IO: X.XX MiB/s` (no memory line).
         - Memory-only metrics: show `Memory: peak ...`.
-        - Combined metrics: show memory then I/O on separate lines.
+        - CPU-only metrics: show CPU time and CPU percentages.
+        - Combined metrics: show each available metric on separate lines.
         """
         parts: list[str] = []
 
@@ -43,6 +44,14 @@ class PerformanceMetricsFormatter:
         # I/O line (present when io_mb_s was measured)
         if metrics.io_mb_s is not None:
             parts.append(f"IO: {metrics.io_mb_s:.2f} MiB/s")
+
+        # CPU lines
+        if metrics.cpu_seconds is not None:
+            parts.append(f"CPU: {metrics.cpu_seconds:.4f} s")
+        if metrics.cpu_percent_single_core is not None:
+            parts.append(f"CPU% (single-core): {metrics.cpu_percent_single_core:.2f}%")
+        if metrics.cpu_percent_all_cores is not None:
+            parts.append(f"CPU% (all-cores): {metrics.cpu_percent_all_cores:.2f}%")
 
         # Fallback to a memory line if nothing else is present
         if not parts:
@@ -65,10 +74,29 @@ class PerformanceMetricsFormatter:
             "peak_memory_mb": PerformanceMetricsFormatter.peak_memory_mb(metrics),
         }
 
-        # Optional I/O fields
+        PerformanceMetricsFormatter._add_io_fields(result, metrics)
+        PerformanceMetricsFormatter._add_cpu_fields(result, metrics)
+
+        return result
+
+    @staticmethod
+    def _add_io_fields(result: dict[str, Any], metrics: PerformanceMetrics) -> None:
+        """Add optional I/O fields to serialized metrics."""
         if metrics.bytes_read:
             result["bytes_read"] = metrics.bytes_read
         if metrics.io_mb_s is not None:
             result["io_mb_s"] = round(metrics.io_mb_s, 2)
 
-        return result
+    @staticmethod
+    def _add_cpu_fields(result: dict[str, Any], metrics: PerformanceMetrics) -> None:
+        """Add optional CPU fields to serialized metrics."""
+        cpu_numeric_fields = (
+            ("cpu_seconds", metrics.cpu_seconds, 6),
+            ("cpu_user_seconds", metrics.cpu_user_seconds, 6),
+            ("cpu_system_seconds", metrics.cpu_system_seconds, 6),
+            ("cpu_percent_single_core", metrics.cpu_percent_single_core, 2),
+            ("cpu_percent_all_cores", metrics.cpu_percent_all_cores, 2),
+        )
+        for key, value, precision in cpu_numeric_fields:
+            if value is not None:
+                result[key] = round(value, precision)

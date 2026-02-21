@@ -74,10 +74,11 @@ General application settings.
 | `show_progress` | `bool` | `true` | Show progress indicators |
 | `performance_track_mem` | `bool` | `false` | Enable memory profiling |
 | `performance_track_io` | `bool` | `false` | Enable I/O throughput profiling |
+| `performance_track_cpu` | `bool` | `false` | Enable CPU profiling |
 
 !!! note "Legacy key"
     `track_performance` is still supported for backward compatibility.
-    When set, it enables both memory and I/O profiling.
+    When set, it enables memory, I/O, and CPU profiling.
 
 ### `[tool.statsvy.scan]`
 
@@ -183,6 +184,7 @@ color = true
 show_progress = true
 performance_track_mem = false
 performance_track_io = false
+performance_track_cpu = false
 
 [tool.statsvy.scan]
 max_depth = 5
