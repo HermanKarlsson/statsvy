@@ -269,14 +269,20 @@ class ConfigLoader:
         """Map legacy `core.track_performance` to new performance flags.
 
         Updates `core.performance.track_mem` and
-        `core.performance.track_io` for backward compatibility.
+        `core.performance.track_io` / `core.performance.track_cpu`
+        for backward compatibility.
         """
         perf_obj = getattr(section_obj, "performance", None)
         if perf_obj is None or not hasattr(perf_obj, "track_mem"):
             return False
 
         normalized = ConfigValueConverter.normalize_value(value, perf_obj.track_mem)
-        new_perf = replace(perf_obj, track_mem=normalized, track_io=normalized)
+        new_perf = replace(
+            perf_obj,
+            track_mem=normalized,
+            track_io=normalized,
+            track_cpu=normalized,
+        )
         # Update the statically-typed `core` section so replace() receives a
         # concrete dataclass instance (avoids type-checker complaints).
         new_section = replace(self.config.core, performance=new_perf)

@@ -122,3 +122,50 @@ class TestPerformanceTracker:
 
             assert isinstance(metrics, PerformanceMetrics)
             assert not tracker.is_active()
+
+    def test_tracker_cpu_only_collects_cpu_metrics(self) -> None:
+        """CPU-only tracking should populate CPU fields without memory."""
+        tracker = PerformanceTracker(track_memory=False, track_cpu=True)
+
+        with (
+            patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
+        ):
+            mock_usage.side_effect = [
+                type("Usage", (), {"ru_utime": 1.0, "ru_stime": 0.5})(),
+                type("Usage", (), {"ru_utime": 1.6, "ru_stime": 0.9})(),
+            ]
+            mock_clock.side_effect = [10.0, 11.0]
+
+            tracker.start()
+            metrics = tracker.stop()
+
+            assert metrics.peak_memory_bytes == 0
+            assert metrics.cpu_user_seconds == pytest.approx(0.6)
+            assert metrics.cpu_system_seconds == pytest.approx(0.4)
+            assert metrics.cpu_seconds == pytest.approx(1.0)
+            assert metrics.cpu_percent_single_core == pytest.approx(100.0)
+            assert metrics.cpu_percent_all_cores is not None
+
+    def test_tracker_memory_and_cpu_collects_both(self) -> None:
+        """Combined tracking should collect both peak memory and CPU deltas."""
+        tracker = PerformanceTracker(track_memory=True, track_cpu=True)
+
+        with (
+            patch("statsvy.core.performance_tracker.tracemalloc") as mock_tm,
+            patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
+        ):
+            mock_tm.get_traced_memory.return_value = (1_000, 2_000)
+            mock_usage.side_effect = [
+                type("Usage", (), {"ru_utime": 2.0, "ru_stime": 1.0})(),
+                type("Usage", (), {"ru_utime": 2.2, "ru_stime": 1.1})(),
+            ]
+            mock_clock.side_effect = [20.0, 20.5]
+
+            tracker.start()
+            metrics = tracker.stop()
+
+            assert metrics.peak_memory_bytes == 2_000
+            assert metrics.cpu_seconds == pytest.approx(0.3)
+            assert metrics.cpu_percent_single_core is not None
