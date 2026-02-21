@@ -36,6 +36,11 @@ class TestFormatter:
         result = Formatter.format(minimal_metrics, format_type="markdown")
         assert "# Scan:" in result
 
+    def test_html_format_type(self, minimal_metrics: MagicMock) -> None:
+        """format_type='html' must return a basic HTML document."""
+        result = Formatter.format(minimal_metrics, format_type="html")
+        assert "<html" in result and "<table" in result
+
     def test_unknown_format_type_raises(self, minimal_metrics: MagicMock) -> None:
         """An unknown format_type must raise ValueError."""
         with pytest.raises(ValueError, match="Unknown format type: xml"):

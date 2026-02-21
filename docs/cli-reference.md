@@ -37,7 +37,7 @@ statsvy scan [OPTIONS] [TARGET]
 | `--dir PATH` | | Directory to scan (alternative to positional TARGET) |
 | `--ignore PATTERN` | `-i`, `-e` | Glob patterns to ignore (repeatable). Alias: `--exclude` |
 | `--verbose` | `-v` | Enable verbose output |
-| `--format FORMAT` | `-f` | Output format: `table`, `json`, `md`, `markdown` |
+| `--format FORMAT` | `-f` | Output format: `table`, `json`, `md`, `markdown`, `html` |
 | `--output PATH` | `-o` | Save output to file |
 | `--no-color` | | Disable colored output |
 | `--no-progress` | | Disable progress bar |
@@ -122,7 +122,7 @@ statsvy compare [OPTIONS] PROJECT1 PROJECT2
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--format FORMAT` | `-f` | Output format: `table`, `json`, `md`, `markdown` |
+| `--format FORMAT` | `-f` | Output format: `table`, `json`, `md`, `markdown`, `html` |
 | `--output PATH` | `-o` | Save output to file |
 | `--verbose` | `-v` | Enable verbose output |
 | `--no-color` | | Disable colored output |

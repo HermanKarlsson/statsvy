@@ -247,7 +247,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["table", "json", "md", "markdown"]),
+    type=click.Choice(["table", "json", "md", "markdown", "html"]),
     help="Output format",
 )
 @click.option(
@@ -476,7 +476,7 @@ def current() -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["table", "json", "md", "markdown"]),
+    type=click.Choice(["table", "json", "md", "markdown", "html"]),
     help="Output format",
 )
 @click.option(

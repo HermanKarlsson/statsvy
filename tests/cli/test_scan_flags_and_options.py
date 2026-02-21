@@ -222,6 +222,11 @@ class TestScanFlagsAndOptions:
         result = _invoke_scan(runner, temp_dir, "--format", "markdown")
         assert result.exit_code == 0
 
+    def test_format_html_accepted(self, runner: CliRunner, temp_dir: Path) -> None:
+        """Test that --format html is accepted."""
+        result = _invoke_scan(runner, temp_dir, "--format", "html")
+        assert result.exit_code == 0
+
     def test_output_file_option_saves_file(
         self, runner: CliRunner, temp_dir: Path, tmp_path: Path
     ) -> None:

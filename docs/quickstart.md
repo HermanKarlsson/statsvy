@@ -40,6 +40,12 @@ Statsvy supports three output formats:
     statsvy scan . --format markdown
     ```
 
+=== "HTML"
+
+    ```bash
+    statsvy scan . --format html
+    ```
+
 Save output to a file:
 
 ```bash

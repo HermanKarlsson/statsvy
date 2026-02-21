@@ -5,6 +5,7 @@ from statsvy.data.config import DisplayConfig, GitConfig
 from statsvy.data.git_info import GitInfo
 from statsvy.data.metrics import Metrics
 from statsvy.formatters.compare_formatter import CompareFormatter
+from statsvy.formatters.html_formatter import HtmlFormatter
 from statsvy.formatters.json_formatter import JsonFormatter
 from statsvy.formatters.markdown_formatter import MarkdownFormatter
 from statsvy.formatters.table_formatter import TableFormatter
@@ -75,6 +76,10 @@ class Formatter:
             return JsonFormatter(display_config).format(metrics, git_info=git_info)
         elif format_type in {"markdown", "md"}:
             return MarkdownFormatter(display_config, git_config).format(
+                metrics, git_info=git_info
+            )
+        elif format_type == "html":
+            return HtmlFormatter(display_config, git_config).format(
                 metrics, git_info=git_info
             )
         else:
