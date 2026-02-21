@@ -109,6 +109,7 @@ class DisplayConfig:
 
     truncate_paths: bool
     show_percentages: bool
+    show_deps_list: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +241,7 @@ class Config:
             display=DisplayConfig(
                 truncate_paths=True,
                 show_percentages=True,
+                show_deps_list=True,
             ),
             comparison=ComparisonConfig(
                 show_unchanged=False,

@@ -9,3 +9,4 @@ class DisplayConfig:
 
     truncate_paths: bool
     show_percentages: bool
+    show_deps_list: bool = True

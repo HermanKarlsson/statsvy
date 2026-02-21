@@ -27,6 +27,7 @@ class MarkdownFormatter:
         self._show_percentages = (
             display_config.show_percentages if display_config else True
         )
+        self._show_deps_list = display_config.show_deps_list if display_config else True
         self._show_contributors = git_config.show_contributors if git_config else True
 
     def format(self, metrics: Metrics, git_info: GitInfo | None = None) -> str:
@@ -260,5 +261,24 @@ class MarkdownFormatter:
             lines.append("\n### Conflicts\n")
             for conflict in dep_info.conflicts:
                 lines.append(f"- {conflict}")
+
+        if self._show_deps_list and dep_info.dependencies:
+            _category_label = {
+                "prod": "Production",
+                "dev": "Development",
+                "optional": "Optional",
+            }
+            _category_order = {"prod": 0, "dev": 1, "optional": 2}
+            sorted_deps = sorted(
+                dep_info.dependencies,
+                key=lambda d: (_category_order.get(d.category, 99), d.name.lower()),
+            )
+            lines.append("\n### Packages\n")
+            lines.append("| Name | Version | Category |")
+            lines.append("|------|---------|----------|")
+            for dep in sorted_deps:
+                label = _category_label.get(dep.category, dep.category.title())
+                version = dep.version or "-"
+                lines.append(f"| {dep.name} | {version} | {label} |")
 
         return "\n".join(lines)

@@ -49,6 +49,7 @@ class ScanKwargs(TypedDict, total=False):
         scan_timeout: Maximum scan duration in seconds.
         min_lines_threshold: Minimum number of lines for a file to be included.
         no_deps: If True, skips dependency analysis.
+        no_deps_list: If True, shows only dep counts, not individual package names.
     """
 
     dir: str | None
@@ -77,6 +78,7 @@ class ScanKwargs(TypedDict, total=False):
     scan_timeout: int | None
     min_lines_threshold: int | None
     no_deps: bool
+    no_deps_list: bool
 
 
 def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> None:
@@ -117,6 +119,9 @@ def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> No
         storage_auto_save=not no_save if no_save else None,
         display_truncate_paths=kwargs.get("truncate_paths"),
         display_show_percentages=kwargs.get("percentages"),
+        display_show_deps_list=(
+            not no_deps_list if (no_deps_list := kwargs.get("no_deps_list")) else None
+        ),
     )
 
 
@@ -342,6 +347,11 @@ def main(ctx: click.Context, config: Path | None) -> None:
     "--no-deps",
     is_flag=True,
     help="Skip dependency analysis (dependencies analyzed by default)",
+)
+@click.option(
+    "--no-deps-list",
+    is_flag=True,
+    help="Show only dependency counts, not individual package names",
 )
 @click.option("--quiet", "-q", is_flag=True, help="Suppress console output")
 @click.pass_obj

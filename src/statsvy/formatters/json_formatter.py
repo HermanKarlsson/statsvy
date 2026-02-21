@@ -3,6 +3,7 @@
 import json
 from typing import Any
 
+from statsvy.data.config import DisplayConfig
 from statsvy.data.git_info import GitInfo
 from statsvy.data.metrics import Metrics
 from statsvy.serializers.git_info_serializer import GitInfoSerializer
@@ -11,6 +12,14 @@ from statsvy.utils.formatting import format_size
 
 class JsonFormatter:
     """Formats Metrics objects as JSON strings."""
+
+    def __init__(self, display_config: DisplayConfig | None = None) -> None:
+        """Initialize formatter with display preferences.
+
+        Args:
+            display_config: Optional display configuration overrides.
+        """
+        self._show_deps_list = display_config.show_deps_list if display_config else True
 
     def format(self, metrics: Metrics, git_info: GitInfo | None = None) -> str:
         """Format metrics data as a JSON string.
@@ -70,7 +79,7 @@ class JsonFormatter:
         deps = getattr(metrics, "dependencies", None)
         if deps is not None:
             # defensively convert dependency fields into serialisable types
-            result["dependencies"] = {
+            dep_dict: dict[str, Any] = {
                 "prod_count": int(deps.prod_count),
                 "dev_count": int(deps.dev_count),
                 "optional_count": int(deps.optional_count),
@@ -78,6 +87,20 @@ class JsonFormatter:
                 "sources": list(deps.sources) if deps.sources is not None else [],
                 "conflicts": list(deps.conflicts) if deps.conflicts is not None else [],
             }
+            if self._show_deps_list and deps.dependencies:
+                dep_dict["items"] = [
+                    {
+                        "name": d.name,
+                        "version": d.version,
+                        "category": d.category,
+                        "source_file": d.source_file,
+                    }
+                    for d in sorted(
+                        deps.dependencies,
+                        key=lambda d: (d.category, d.name.lower()),
+                    )
+                ]
+            result["dependencies"] = dep_dict
 
         return result
 

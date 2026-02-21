@@ -72,7 +72,7 @@ class Formatter:
                 metrics, git_info=git_info
             )
         elif format_type == "json":
-            return JsonFormatter().format(metrics, git_info=git_info)
+            return JsonFormatter(display_config).format(metrics, git_info=git_info)
         elif format_type in {"markdown", "md"}:
             return MarkdownFormatter(display_config, git_config).format(
                 metrics, git_info=git_info

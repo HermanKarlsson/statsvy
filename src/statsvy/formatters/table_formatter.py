@@ -39,6 +39,7 @@ class TableFormatter:
         self._show_percentages = (
             display_config.show_percentages if display_config else True
         )
+        self._show_deps_list = display_config.show_deps_list if display_config else True
         self._show_contributors = git_config.show_contributors if git_config else True
 
     def format(self, metrics: Metrics, git_info: GitInfo | None = None) -> str:
@@ -77,6 +78,9 @@ class TableFormatter:
         if metrics.dependencies is not None:
             deps_table = self._create_dependencies_table(metrics.dependencies)
             self._append_table(output_parts, deps_table)
+            if self._show_deps_list and metrics.dependencies.dependencies:
+                list_table = self._create_dep_list_table(metrics.dependencies)
+                self._append_table(output_parts, list_table)
 
         return "".join(output_parts)
 
@@ -324,5 +328,40 @@ class TableFormatter:
                 "[bold yellow]Conflicts[/bold yellow]",
                 f"[bold yellow]{conflict_str}[/bold yellow]",
             )
+
+        return table
+
+    def _create_dep_list_table(self, dep_info: DependencyInfo) -> Table:
+        """Create a table listing every individual dependency.
+
+        Args:
+            dep_info: The DependencyInfo object to format.
+        """
+        _category_label = {
+            "prod": "Production",
+            "dev": "Development",
+            "optional": "Optional",
+        }
+        _category_order = {"prod": 0, "dev": 1, "optional": 2}
+
+        table = Table(
+            title="[bold white]Dependency List[/bold white]",
+            title_justify="left",
+            show_header=True,
+            header_style=f"bold {self.HEADER_COLOR}",
+            border_style=self.BORDER_COLOR,
+            box=box.ROUNDED,
+        )
+        table.add_column("Name", style=self.LABEL_COLOR)
+        table.add_column("Version", style=self.VALUE_COLOR)
+        table.add_column("Category", style=self.ACCENT_COLOR)
+
+        sorted_deps = sorted(
+            dep_info.dependencies,
+            key=lambda d: (_category_order.get(d.category, 99), d.name.lower()),
+        )
+        for dep in sorted_deps:
+            label = _category_label.get(dep.category, dep.category.title())
+            table.add_row(dep.name, dep.version or "-", label)
 
         return table

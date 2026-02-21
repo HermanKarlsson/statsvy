@@ -312,3 +312,16 @@ class TestScanFlagsAndOptions:
         # No verbose output and minimal/empty output expected
         assert result.exit_code == 0
         assert result.output.strip() == ""
+
+    def test_no_deps_list_flag_accepted(
+        self, runner: CliRunner, temp_dir: Path
+    ) -> None:
+        """Test that --no-deps-list flag is accepted without error."""
+        result = _invoke_scan(runner, temp_dir, "--no-deps-list", "--no-save")
+        assert result.exit_code == 0
+
+    def test_no_deps_list_appears_in_help(self, runner: CliRunner) -> None:
+        """Test that --no-deps-list is documented in --help output."""
+        result = runner.invoke(main, ["scan", "--help"])
+        assert result.exit_code == 0
+        assert "--no-deps-list" in result.output
