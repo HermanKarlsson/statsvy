@@ -3,6 +3,8 @@
 from html import escape
 from unittest.mock import MagicMock
 
+from statsvy.data.dependency import Dependency
+from statsvy.data.project_info import DependencyInfo
 from statsvy.formatters.html_formatter import HtmlFormatter
 
 
@@ -39,3 +41,21 @@ class TestHtmlFormatter:
         result = fmt.format(minimal_metrics)
         assert "<proj>" not in result
         assert escape(minimal_metrics.name) in result
+
+    def test_dependencies_section(self, minimal_metrics: MagicMock) -> None:
+        """Dependencies are included by default with package listing."""
+        dep = Dependency(name="foo", version="1.0", category="prod", source_file="p1")
+        minimal_metrics.dependencies = DependencyInfo(
+            dependencies=(dep,),
+            prod_count=1,
+            dev_count=0,
+            optional_count=0,
+            total_count=1,
+            sources=("p1",),
+            conflicts=(),
+        )
+
+        fmt = HtmlFormatter()
+        result = fmt.format(minimal_metrics)
+        assert "<h2>Dependencies</h2>" in result
+        assert "foo" in result

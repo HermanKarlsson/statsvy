@@ -5,6 +5,7 @@ from html import escape
 from statsvy.data.config import DisplayConfig, GitConfig
 from statsvy.data.git_info import GitInfo
 from statsvy.data.metrics import Metrics
+from statsvy.data.project_info import DependencyInfo
 from statsvy.utils.formatting import format_size, truncate_path_display
 
 
@@ -34,10 +35,8 @@ class HtmlFormatter:
         self._show_percentages = (
             display_config.show_percentages if display_config else True
         )
-        # html formatter never shows deps or contributors in MVP
-        self._show_deps_list = (
-            display_config.show_deps_list if display_config else False
-        )
+        # dependency section should behave like other formatters
+        self._show_deps_list = display_config.show_deps_list if display_config else True
         self._show_contributors = git_config.show_contributors if git_config else True
 
     def format(self, metrics: Metrics, git_info: GitInfo | None = None) -> str:
@@ -69,6 +68,9 @@ class HtmlFormatter:
 
         if metrics.lines_by_lang:
             html_parts.append(self._format_language_table(metrics))
+
+        if getattr(metrics, "dependencies", None) is not None:
+            html_parts.append(self._format_dependencies(metrics.dependencies))
 
         html_parts.append("</body>")
         html_parts.append("</html>")
@@ -115,16 +117,8 @@ class HtmlFormatter:
             lines.extend(
                 [
                     f"<tr><td>Git Repo</td><td>{repo_label}</td></tr>",
-                    (
-                        f"<tr><td>Git Branch</td><td>"
-                        f"{escape(git_info.current_branch or '-')}"
-                        "</td></tr>"
-                    ),
-                    (
-                        f"<tr><td>Git Remote</td><td>"
-                        f"{escape(git_info.remote_url or '-')}"
-                        "</td></tr>"
-                    ),
+                    f"<tr><td>Git Branch</td><td>{escape(git_info.current_branch or '-')}</td></tr>",  # noqa: E501
+                    f"<tr><td>Git Remote</td><td>{escape(git_info.remote_url or '-')}</td></tr>",  # noqa: E501
                 ]
             )
             if self._show_contributors:
@@ -194,3 +188,57 @@ class HtmlFormatter:
             table.append(f"<tr>{r}</tr>")
         table.append("</table>")
         return "\n".join(table)
+
+    # dependency formatting ------------------------------------------------
+    def _format_dependencies(self, dep_info: DependencyInfo) -> str:
+        """Return HTML representation of dependency statistics.
+
+        The structure mirrors the Markdown formatter but uses HTML tables and
+        lists. It respects ``self._show_deps_list`` to optionally render the
+        per-package table.
+        """
+        parts: list[str] = []
+        parts.append("<h2>Dependencies</h2>")
+        parts.append("<table>")
+        parts.append("<tr><th>Category</th><th>Count</th></tr>")
+        parts.append(f"<tr><td>Production</td><td>{dep_info.prod_count}</td></tr>")
+        parts.append(f"<tr><td>Development</td><td>{dep_info.dev_count}</td></tr>")
+        parts.append(f"<tr><td>Optional</td><td>{dep_info.optional_count}</td></tr>")
+        parts.append(
+            f"<tr><td><strong>Total</strong></td><td><strong>{dep_info.total_count}</strong></td></tr>"
+        )
+        parts.append("</table>")
+
+        if dep_info.sources:
+            parts.append(f"<p>Sources: {escape(', '.join(dep_info.sources))}</p>")
+
+        if dep_info.conflicts:
+            parts.append("<h3>Conflicts</h3>")
+            parts.append("<ul>")
+            for c in dep_info.conflicts:
+                parts.append(f"<li>{escape(c)}</li>")
+            parts.append("</ul>")
+
+        if self._show_deps_list and dep_info.dependencies:
+            _cat_order = {"prod": 0, "dev": 1, "optional": 2}
+            _cat_label = {
+                "prod": "Production",
+                "dev": "Development",
+                "optional": "Optional",
+            }
+            sorted_deps = sorted(
+                dep_info.dependencies,
+                key=lambda d: (_cat_order.get(d.category, 99), d.name.lower()),
+            )
+            parts.append("<h3>Packages</h3>")
+            parts.append("<table>")
+            parts.append("<tr><th>Name</th><th>Version</th><th>Category</th></tr>")
+            for d in sorted_deps:
+                label = _cat_label.get(d.category, d.category.title())
+                version = d.version or "-"
+                parts.append(
+                    f"<tr><td>{escape(d.name)}</td><td>{escape(version)}</td><td>{escape(label)}</td></tr>"
+                )
+            parts.append("</table>")
+
+        return "\n".join(parts)
