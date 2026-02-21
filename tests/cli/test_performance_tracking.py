@@ -1,5 +1,6 @@
 """Integration tests for performance tracking feature."""
 
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -41,6 +42,23 @@ def test_project_dir(tmp_path: Path) -> Path:
     (subdir / "module.py").write_text("# Module\ndef function():\n    pass")
 
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def disable_git_stats() -> Iterator[None]:
+    """Disable expensive git metadata collection for these CLI tests."""
+    with patch(
+        "statsvy.cli.scan_handler.GitStats.detect_repository", return_value=None
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def fast_tracemalloc() -> Iterator[None]:
+    """Mock tracemalloc to keep performance-tracking tests fast under coverage."""
+    with patch("statsvy.core.performance_tracker.tracemalloc") as mock_tm:
+        mock_tm.get_traced_memory.return_value = (0, 52_428_800)
+        yield
 
 
 class TestPerformanceTrackingCLI:

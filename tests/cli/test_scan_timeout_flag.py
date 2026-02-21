@@ -1,6 +1,7 @@
 """Test suite for --scan-timeout CLI flag."""
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -37,6 +38,14 @@ def temp_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def fast_tracemalloc() -> Iterator[None]:
+    """Mock tracemalloc so profile-related timeout tests remain fast."""
+    with patch("statsvy.core.performance_tracker.tracemalloc") as mock_tm:
+        mock_tm.get_traced_memory.return_value = (0, 52_428_800)
+        yield
+
+
 def _invoke_scan(runner: CliRunner, directory: Path, *extra_args: str) -> Result:
     """Invoke ``statsvy scan`` pointing at *directory* with optional extra args."""
     original_cwd = os.getcwd()
@@ -44,7 +53,7 @@ def _invoke_scan(runner: CliRunner, directory: Path, *extra_args: str) -> Result
     os.chdir(directory)
     try:
         with patch(f"{_CLI_MODULE}.Path.cwd", return_value=directory):
-            result: Result = runner.invoke(main, ["scan", *extra_args])
+            result: Result = runner.invoke(main, ["scan", "--no-git", *extra_args])
     finally:
         os.chdir(original_cwd)
 
@@ -119,6 +128,7 @@ class TestScanTimeoutFlag:
                             "--scan-timeout",
                             "5",
                             "--profile",
+                            "--no-git",
                             "--no-save",
                             "--no-progress",
                         ],
