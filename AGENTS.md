@@ -851,7 +851,7 @@ def analyze_file(path, verbose: bool = False) -> Metrics:
     ...
 ```
 
-### Type Checker: mypy (via ty)
+### Type Checker: ty
 
 **Configuration**:
 ```toml
@@ -868,7 +868,7 @@ uv run ty check
 ```
 
 **Rules**:
-- All errors reported by mypy must be fixed (no `type: ignore` without justification)
+- All errors reported by ty must be fixed (no `type: ignore` without justification)
 - Use `type: ignore` comments sparingly, with explanatory comments
 - Generic types must be properly parameterized: `dict[str, int]` not `dict`
 - Use `Optional[T]` or `T | None` (Python 3.10+ style preferred)
@@ -1328,6 +1328,21 @@ def __init__(self, max_size_mb: int) -> None:
 
 ## Git & Commit Practices
 
+### Branching Strategy
+
+- `main`: Production-ready code, releases only — never commit directly
+- `develop`: Integration branch — all feature branches merge here
+- Feature branches: branch from `develop`, merge back to `develop` via PR
+- Branch naming: `feat/<short-description>`, `fix/<short-description>`, `refactor/<short-description>` etc.
+
+**Example**:
+```bash
+git checkout develop
+git checkout -b feat/add-rust-language-support
+# ... do work ...
+# Open PR targeting develop
+```
+
 ### Commit Messages
 
 Follow conventional commit format:
@@ -1383,7 +1398,7 @@ uv run ruff format .
 uv run ruff check . --fix
 
 # 3. Run type checking
-uv run mypy src/statsvy
+uv run ty check
 
 # 4. Run tests with coverage
 uv run pytest -v --cov=statsvy --cov-report=term-missing
@@ -1412,7 +1427,7 @@ Use this checklist for all code submissions:
 - [ ] All code formatted with `ruff format`
 - [ ] All linting issues fixed with `ruff check --fix`
 - [ ] Type annotations complete (no missing `:` or `->`)
-- [ ] Type checker passes (`mypy`) with no errors
+- [ ] Type checker passes (`ty`) with no errors
 - [ ] All public classes/functions have docstrings
 - [ ] Docstrings follow Google style
 - [ ] No unused imports or variables
@@ -1449,7 +1464,7 @@ These rules are automatically enforced in CI/CD:
 
 1. **Formatting**: `ruff format --check .` fails if code is not formatted
 2. **Linting**: `ruff check .` fails if linting issues exist
-3. **Type Checking**: `mypy src/statsvy` fails if type errors exist
+3. **Type Checking**: `ty check` fails if type errors exist
 4. **Testing**: `pytest --cov=statsvy --cov-fail-under=90` fails if coverage < 90%
 5. **All checks must pass** before code can be merged
 
@@ -1475,7 +1490,7 @@ These rules are automatically enforced in CI/CD:
 
 ---
 
-**Last Updated**: February 14, 2026
+**Last Updated**: February 21, 2026
 
 ## Summary
 

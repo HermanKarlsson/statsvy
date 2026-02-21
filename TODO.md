@@ -9,21 +9,11 @@
 - Maintainability index
 - Halstead metrics
 - Code smell detection
-- Integration as separate sub-package
 - HTML export functionality
-- Chart rendering for metrics
 - Customizable themes and styling
-- Rich visual reports
 - Web dashboard for metrics visualization
-- CI/CD pipeline integration
 - IDE extensions
-- Docker containerization
-- API server for remote access
-- Real-time file system monitoring
-- Plugin system for extensions
 - Programmatic API access
-- Community plugin registry
-- Integration with code review tools
 
 ---
 
