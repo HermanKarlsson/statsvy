@@ -9,7 +9,9 @@ class PerformanceConfig:
 
     - track_mem: measure memory (tracemalloc)
     - track_io: measure I/O throughput (MB/s)
+    - track_cpu: measure process CPU usage (without psutil)
     """
 
     track_mem: bool
     track_io: bool
+    track_cpu: bool

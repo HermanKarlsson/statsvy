@@ -53,6 +53,25 @@ class TestPerformanceMetrics:
         assert result["peak_memory_bytes"] == 52_428_800
         assert result["peak_memory_mb"] == 50.0
 
+    def test_to_dict_includes_cpu_fields(self) -> None:
+        """CPU fields should be serialized when present."""
+        metrics = PerformanceMetrics(
+            peak_memory_bytes=0,
+            cpu_seconds=0.25,
+            cpu_user_seconds=0.2,
+            cpu_system_seconds=0.05,
+            cpu_percent_single_core=83.33,
+            cpu_percent_all_cores=10.41,
+        )
+
+        result = PerformanceMetricsFormatter.to_dict(metrics)
+
+        assert result["cpu_seconds"] == 0.25
+        assert result["cpu_user_seconds"] == 0.2
+        assert result["cpu_system_seconds"] == 0.05
+        assert result["cpu_percent_single_core"] == 83.33
+        assert result["cpu_percent_all_cores"] == 10.41
+
     def test_performance_metrics_is_immutable(self) -> None:
         """Test that PerformanceMetrics is immutable (frozen)."""
         metrics = PerformanceMetrics(peak_memory_bytes=50_000_000)
@@ -70,6 +89,9 @@ class TestPerformanceMetrics:
         # New optional I/O fields should also be present
         assert "bytes_read" in slots
         assert "io_mb_s" in slots
+        assert "cpu_seconds" in slots
+        assert "cpu_percent_single_core" in slots
+        assert "cpu_percent_all_cores" in slots
 
     def test_zero_memory_metrics(self) -> None:
         """Test metrics with zero memory values."""
@@ -83,3 +105,19 @@ class TestPerformanceMetrics:
         metrics = PerformanceMetrics(peak_memory_bytes=1_073_741_824)  # 1 GB
 
         assert PerformanceMetricsFormatter.peak_memory_mb(metrics) == 1024.0
+
+    def test_format_text_cpu_only(self) -> None:
+        """CPU-only metrics should render CPU lines without memory or I/O."""
+        metrics = PerformanceMetrics(
+            peak_memory_bytes=0,
+            cpu_seconds=0.1234,
+            cpu_percent_single_core=45.67,
+            cpu_percent_all_cores=5.71,
+        )
+
+        formatted = PerformanceMetricsFormatter.format_text(metrics)
+        assert "CPU: 0.1234 s" in formatted
+        assert "CPU% (single-core): 45.67%" in formatted
+        assert "CPU% (all-cores): 5.71%" in formatted
+        assert "Memory:" not in formatted
+        assert "IO:" not in formatted

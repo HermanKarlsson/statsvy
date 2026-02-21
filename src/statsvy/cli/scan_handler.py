@@ -81,13 +81,15 @@ class ScanHandler:
         # When performance tracking is running we disable the runtime timeout
         # so profiling is not interrupted. Create and start the timeout
         # checker once and pass it to the helpers below.
-        effective_timeout = 0 if perf_tracker else self.config.scan.timeout_seconds
+        effective_timeout = (
+            0 if self._is_profiling_enabled() else self.config.scan.timeout_seconds
+        )
         timeout_checker = TimeoutChecker(effective_timeout)
         timeout_checker.start()
 
         # Delegate the actual runs (I/O/memory/normal) to a helper so this
         # method remains concise and within complexity limits.
-        metrics, perf_metrics, io_metrics = self._run_profiles(
+        metrics, perf_metrics, io_metrics, cpu_metrics = self._run_profiles(
             resolved_dir, combined_ignore, perf_tracker, timeout_checker
         )
 
@@ -96,10 +98,12 @@ class ScanHandler:
 
         # If we collected memory metrics, show combined output (may include
         # I/O stats attached above). Otherwise show any I/O-only metrics.
+        if io_metrics:
+            console.print(PerformanceMetricsFormatter.format_text(io_metrics))
         if perf_metrics:
             console.print(PerformanceMetricsFormatter.format_text(perf_metrics))
-        elif io_metrics:
-            console.print(PerformanceMetricsFormatter.format_text(io_metrics))
+        if cpu_metrics:
+            console.print(PerformanceMetricsFormatter.format_text(cpu_metrics))
 
         formatted = self._format_metrics(metrics, output_format)
 
@@ -116,16 +120,11 @@ class ScanHandler:
         if not (
             self.config.core.performance.track_mem
             or self.config.core.performance.track_io
+            or self.config.core.performance.track_cpu
         ):
             return None
 
-        console.print(
-            Text(
-                "Warning: enabling performance tracking will significantly "
-                "slow the scan and increase memory usage.",
-                style="yellow",
-            )
-        )
+        self._print_profiling_warning()
 
         try:
             proceed = click.confirm("Proceed with performance tracking?", default=False)
@@ -140,12 +139,68 @@ class ScanHandler:
         # User declined — disable for this run and continue (update nested
         # PerformanceConfig instead of the removed legacy flag).
         new_perf = replace(
-            self.config.core.performance, track_mem=False, track_io=False
+            self.config.core.performance,
+            track_mem=False,
+            track_io=False,
+            track_cpu=False,
         )
         self.config = replace(
             self.config, core=replace(self.config.core, performance=new_perf)
         )
         return None
+
+    def _is_profiling_enabled(self) -> bool:
+        """Return True when any performance profiling is enabled."""
+        return (
+            self.config.core.performance.track_mem
+            or self.config.core.performance.track_io
+            or self.config.core.performance.track_cpu
+        )
+
+    def _print_profiling_warning(self) -> None:
+        """Print profiling warning text with track-specific estimates."""
+        message = self._build_profiling_warning_message()
+        console.print(Text(message, style="yellow"))
+
+    def _build_profiling_warning_message(self) -> str:
+        """Build a warning message for enabled profiling tracks."""
+        track_mem = self.config.core.performance.track_mem
+        track_io = self.config.core.performance.track_io
+        track_cpu = self.config.core.performance.track_cpu
+
+        if track_mem and track_io and track_cpu:
+            return (
+                "Warning: --profile runs three full scans (I/O, memory, CPU).\n"
+                "Total runtime is SIGNIFICANTLY increased.\n"
+                "Memory profiling can add substantial extra overhead on large "
+                "projects."
+            )
+
+        lines: list[str] = ["Warning: Performance profiling enabled."]
+        if track_io:
+            lines.append(
+                "- Tracking I/O performance (--track-io): can add extra overhead "
+                "(~10% extra runtime)."
+            )
+        if track_mem:
+            lines.append(
+                "- Tracking memory performance (--track-mem): is VERY expensive "
+                "(~30-50% on small projects, much higher on large projects)."
+            )
+        if track_cpu:
+            lines.append(
+                "- Tracking CPU performance (--track-cpu): can add extra overhead "
+                "(~15% extra runtime)."
+            )
+
+        selected_count = sum((track_io, track_mem, track_cpu))
+        if selected_count > 1:
+            lines.append(
+                "Combined profiling runs multiple full scans, so total runtime "
+                "will increase accordingly."
+            )
+
+        return "\n".join(lines)
 
     def _run_scan_with_timeout(
         self,
@@ -264,17 +319,12 @@ class ScanHandler:
         profiling_requested = (
             self.config.core.performance.track_mem
             or self.config.core.performance.track_io
+            or self.config.core.performance.track_cpu
         )
         if not profiling_requested:
             return None
 
-        console.print(
-            Text(
-                "Warning: enabling performance tracking will significantly "
-                "slow the scan and increase memory usage.",
-                style="yellow",
-            )
-        )
+        self._print_profiling_warning()
 
         try:
             proceed = click.confirm("Proceed with performance tracking?", default=False)
@@ -285,7 +335,10 @@ class ScanHandler:
             # Disable profiling for this invocation and continue. Update the
             # nested PerformanceConfig rather than the removed legacy flags.
             new_perf = replace(
-                self.config.core.performance, track_mem=False, track_io=False
+                self.config.core.performance,
+                track_mem=False,
+                track_io=False,
+                track_cpu=False,
             )
             self.config = replace(
                 self.config, core=replace(self.config.core, performance=new_perf)
@@ -295,7 +348,7 @@ class ScanHandler:
         # Return an unstarted tracker instance when memory profiling is
         # requested; it will be started later only for the memory run.
         if self.config.core.performance.track_mem:
-            return PerformanceTracker()
+            return PerformanceTracker(track_memory=True, track_cpu=False)
 
         return None
 
@@ -305,76 +358,59 @@ class ScanHandler:
         combined_ignore: tuple[str, ...],
         perf_tracker: PerformanceTracker | None,
         timeout_checker: TimeoutChecker,
-    ) -> tuple[Metrics, PerformanceMetrics | None, PerformanceMetrics | None]:
+    ) -> tuple[
+        Metrics,
+        PerformanceMetrics | None,
+        PerformanceMetrics | None,
+        PerformanceMetrics | None,
+    ]:
         """Execute the requested profiling runs and return results.
 
-        Returns a tuple: (metrics, perf_metrics, io_metrics).
+        Returns a tuple: (metrics, perf_metrics, io_metrics, cpu_metrics).
         """
         io_metrics: PerformanceMetrics | None = None
         perf_metrics: PerformanceMetrics | None = None
+        cpu_metrics: PerformanceMetrics | None = None
+        metrics: Metrics | None = None
 
-        if (
-            self.config.core.performance.track_io
-            and self.config.core.performance.track_mem
-        ):
-            # Profile mode: single run with both I/O and memory metrics.
-            # Start memory tracker immediately before the scan.
-            if perf_tracker and not perf_tracker.is_active():
-                perf_tracker.start()
-
-            io_start = perf_counter()
-            scanner = Scanner(
-                resolved_dir,
-                ignore=combined_ignore,
-                no_gitignore=not self.config.scan.respect_gitignore,
-                config=self.config,
-            )
-            scan_result = scanner.scan(timeout_checker)
-            io_end = perf_counter()
-
-            metrics = self._analyze_scan_result(
-                resolved_dir, scan_result, timeout_checker
-            )
-
-            bytes_read = getattr(scan_result, "bytes_read", 0)
-            elapsed_io = max(1e-6, io_end - io_start)
-            io_mb_s = (bytes_read / (1024**2)) / elapsed_io
-
-            if perf_tracker:
-                perf_metrics = perf_tracker.stop()
-                perf_metrics = replace(
-                    perf_metrics,
-                    bytes_read=bytes_read,
-                    io_mb_s=io_mb_s,
-                )
-            return metrics, perf_metrics, None
-
-        if (
-            self.config.core.performance.track_io
-            and not self.config.core.performance.track_mem
-        ):
-            # I/O-only: perform a single scanner run and reuse the ScanResult
+        if self.config.core.performance.track_io:
+            # I/O profiling run
             scan_result, bytes_read, io_metrics = self._perform_io_scan(
                 resolved_dir, combined_ignore, timeout_checker
             )
             metrics = self._analyze_scan_result(
                 resolved_dir, scan_result, timeout_checker
             )
-            return metrics, None, io_metrics
+            io_metrics = replace(io_metrics, bytes_read=bytes_read)
 
-        # Memory-tracked or plain scan (legacy flow)
-        if (
-            perf_tracker
-            and self.config.core.performance.track_mem
-            and not perf_tracker.is_active()
-        ):
-            perf_tracker.start()
+        if self.config.core.performance.track_mem:
+            # Memory profiling run
+            if perf_tracker is None:
+                perf_tracker = PerformanceTracker(track_memory=True, track_cpu=False)
+            if not perf_tracker.is_active():
+                perf_tracker.start()
 
-        metrics = self._run_scan_with_timeout(
-            resolved_dir, combined_ignore, timeout_checker, perf_tracker
-        )
-        perf_metrics = perf_tracker.stop() if perf_tracker else None
-        return metrics, perf_metrics, None
+            metrics = self._run_scan_with_timeout(
+                resolved_dir, combined_ignore, timeout_checker, perf_tracker
+            )
+            perf_metrics = perf_tracker.stop()
+
+        if self.config.core.performance.track_cpu:
+            # CPU profiling run
+            cpu_tracker = PerformanceTracker(track_memory=False, track_cpu=True)
+            cpu_tracker.start()
+            metrics = self._run_scan_with_timeout(
+                resolved_dir, combined_ignore, timeout_checker, cpu_tracker
+            )
+            cpu_metrics = cpu_tracker.stop()
+
+        if metrics is None:
+            # Plain scan with no profiling
+            metrics = self._run_scan_with_timeout(
+                resolved_dir, combined_ignore, timeout_checker, perf_tracker
+            )
+
+        return metrics, perf_metrics, io_metrics, cpu_metrics
 
     def _scan_and_analyze(
         self,

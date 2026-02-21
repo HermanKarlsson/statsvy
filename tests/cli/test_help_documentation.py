@@ -118,6 +118,7 @@ class TestHelpDocumentation:
         assert "--profile" in help_out
         assert "--track-io" in help_out
         assert "--track-mem" in help_out
+        assert "--track-cpu" in help_out
         assert "--quiet" in help_out
 
     def test_config_help_exits_zero(self, runner: CliRunner) -> None:

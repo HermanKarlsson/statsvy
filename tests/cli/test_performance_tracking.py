@@ -86,7 +86,7 @@ class TestPerformanceTrackingCLI:
     ) -> None:
         """Test scan command with --track-performance flag.
 
-        `--track-performance` now runs both I/O and memory profiling (double-run).
+        `--track-performance` now runs I/O, memory, and CPU profiling.
         """
         with runner.isolated_filesystem():
             result = runner.invoke(
@@ -105,6 +105,7 @@ class TestPerformanceTrackingCLI:
             # Both I/O and memory metrics should be present
             assert "Memory:" in result.output
             assert "IO:" in result.output
+            assert "CPU:" in result.output
             assert "MiB/s" in result.output
             assert "peak" in result.output
             assert "MB" in result.output
@@ -112,7 +113,7 @@ class TestPerformanceTrackingCLI:
     def test_scan_with_profile_alias(
         self, runner: CliRunner, test_project_dir: Path
     ) -> None:
-        """`--profile` should run both I/O and memory profiling (double-run)."""
+        """`--profile` should run I/O, memory, and CPU profiling."""
         with runner.isolated_filesystem():
             result = runner.invoke(
                 main,
@@ -130,6 +131,31 @@ class TestPerformanceTrackingCLI:
             # Should include both I/O and memory output
             assert "Memory:" in result.output
             assert "IO:" in result.output
+            assert "CPU:" in result.output
+
+    def test_scan_with_track_cpu_flag(
+        self, runner: CliRunner, test_project_dir: Path
+    ) -> None:
+        """`--track-cpu` should display CPU metrics only."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "scan",
+                    "--dir",
+                    str(test_project_dir),
+                    "--no-save",
+                    "--track-cpu",
+                ],
+                input="y\n",
+            )
+
+            assert result.exit_code == 0
+            assert "CPU:" in result.output
+            assert "CPU% (single-core):" in result.output
+            assert "CPU% (all-cores):" in result.output
+            assert "IO:" not in result.output
+            assert "Memory:" not in result.output
 
     def test_scan_with_track_io_flag(
         self, runner: CliRunner, test_project_dir: Path
@@ -257,6 +283,7 @@ class TestPerformanceTrackingCLI:
             assert "seconds" in result.output
             assert "Memory:" in result.output
             assert "IO:" in result.output
+            assert "CPU:" in result.output
 
     def test_scan_track_performance_via_config_file(
         self, runner: CliRunner, test_project_dir: Path, tmp_path: Path
@@ -284,9 +311,10 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Enabling track_performance in config now enables both memory and I/O
+            # Enabling track_performance in config enables memory, I/O, and CPU
             assert "Memory:" in result.output
             assert "IO:" in result.output
+            assert "CPU:" in result.output
 
     def test_scan_cli_flag_overrides_config(
         self, runner: CliRunner, test_project_dir: Path, tmp_path: Path
@@ -316,9 +344,10 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Should show both I/O and memory metrics (flag took precedence)
+            # Should show I/O + memory + CPU metrics (flag took precedence)
             assert "Memory:" in result.output
             assert "IO:" in result.output
+            assert "CPU:" in result.output
 
     def test_performance_metrics_format(
         self, runner: CliRunner, test_project_dir: Path
@@ -344,8 +373,9 @@ class TestPerformanceTrackingCLI:
             # Verify output format contains Memory and peak marker
             assert "Memory:" in result.output
             assert "peak" in result.output
-            # As track-performance now also prints I/O, ensure IO line is valid
+            # As track-performance now also prints I/O + CPU, ensure lines exist
             assert "IO:" in result.output
+            assert "CPU:" in result.output
 
     def test_decline_track_performance_disables_tracking(
         self, runner: CliRunner, test_project_dir: Path
@@ -365,9 +395,10 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Neither Memory nor I/O metrics should be present when user declines
+            # No performance metrics should be present when user declines
             assert "Memory:" not in result.output
             assert "IO:" not in result.output
+            assert "CPU:" not in result.output
 
     @patch("statsvy.cli.scan_handler.PerformanceMetricsFormatter")
     @patch("statsvy.cli.scan_handler.PerformanceTracker")
@@ -380,8 +411,7 @@ class TestPerformanceTrackingCLI:
     ) -> None:
         """Test that PerformanceTracker is properly started and stopped.
 
-        Verifies that the tracker is instantiated, started before work,
-        and stopped after work.
+        Verifies that memory and CPU trackers are instantiated and stopped.
         """
         with runner.isolated_filesystem():
             mock_tracker = mock_tracker_class.return_value
@@ -404,25 +434,31 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Verify tracker was used
-            mock_tracker_class.assert_called_once()
-            mock_tracker.start.assert_called_once()
-            mock_tracker.stop.assert_called_once()
+            # track-performance now creates both memory and CPU trackers.
+            assert mock_tracker_class.call_count == 2
+            assert mock_tracker.start.call_count >= 2
+            assert mock_tracker.stop.call_count >= 2
 
-    def test_profile_triggers_single_scan(
+    def test_profile_triggers_three_scans(
         self, runner: CliRunner, test_project_dir: Path
     ) -> None:
-        """`--profile` should perform one scan and show both IO + memory."""
+        """`--profile` should perform three scans (I/O, memory, CPU)."""
         with (
             runner.isolated_filesystem(),
             patch("statsvy.core.scanner.Scanner.scan") as mock_scan,
             patch("statsvy.cli.scan_handler.PerformanceTracker") as mock_tracker_class,
         ):
             mock_tracker = mock_tracker_class.return_value
-            # Ensure mocked tracker stop returns a real dataclass instance.
-            mock_tracker.stop.return_value = PerformanceMetrics(
-                peak_memory_bytes=42_000_000
-            )
+            # Return memory metrics for memory run, then CPU metrics for CPU run.
+            mock_tracker.stop.side_effect = [
+                PerformanceMetrics(peak_memory_bytes=42_000_000),
+                PerformanceMetrics(
+                    peak_memory_bytes=0,
+                    cpu_seconds=0.1,
+                    cpu_percent_single_core=12.0,
+                    cpu_percent_all_cores=1.5,
+                ),
+            ]
             mock_tracker.is_active.return_value = False
             mock_scan.return_value = MagicMock(
                 bytes_read=1024,
@@ -444,10 +480,12 @@ class TestPerformanceTrackingCLI:
             )
 
             assert result.exit_code == 0
-            # Scanner.scan should be invoked exactly once.
-            assert mock_scan.call_count == 1
-            # Tracker should be started exactly once.
-            mock_tracker.start.assert_called_once()
-            mock_tracker.stop.assert_called_once()
+            # Scanner.scan should be invoked exactly three times.
+            assert mock_scan.call_count == 3
+            # Memory + CPU tracker instances are both used.
+            assert mock_tracker_class.call_count == 2
+            assert mock_tracker.start.call_count >= 2
+            assert mock_tracker.stop.call_count >= 2
             assert "IO:" in result.output
             assert "Memory:" in result.output
+            assert "CPU:" in result.output
