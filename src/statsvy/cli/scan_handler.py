@@ -47,6 +47,7 @@ class ScanHandler:
         ignore_patterns: tuple[str, ...],
         output_format: str | None,
         output_path: Path | None,
+        no_css: bool = False,
     ) -> None:
         """Execute the complete scan workflow.
 
@@ -60,6 +61,7 @@ class ScanHandler:
             ignore_patterns: Glob patterns to exclude from the scan.
             output_format: Desired output format (e.g., 'table', 'json').
             output_path: Optional path for saving formatted output to file.
+            no_css: When True suppress any embedded CSS in HTML output.
 
         Raises:
             TimeoutError: If the scan or analysis exceeds the configured
@@ -105,7 +107,7 @@ class ScanHandler:
         if cpu_metrics:
             console.print(PerformanceMetricsFormatter.format_text(cpu_metrics))
 
-        formatted = self._format_metrics(metrics, output_format)
+        formatted = self._format_metrics(metrics, output_format, include_css=not no_css)
 
         if self.config.storage.auto_save:
             Storage.save(metrics, config=self.config)
@@ -485,12 +487,19 @@ class ScanHandler:
 
         return metrics
 
-    def _format_metrics(self, metrics: Metrics, output_format: str | None) -> str:
+    def _format_metrics(
+        self,
+        metrics: Metrics,
+        output_format: str | None,
+        include_css: bool | None = None,
+    ) -> str:
         """Format metrics for output.
 
         Args:
             metrics: Metrics object to format.
             output_format: Desired format type.
+            include_css: When formatting HTML, whether to embed CSS. ``None``
+                defers to the Formatter default (which is True).
 
         Returns:
             Formatted string output.
@@ -506,4 +515,5 @@ class ScanHandler:
             git_info=git_info,
             display_config=self.config.display,
             git_config=self.config.git,
+            include_css=include_css,
         )

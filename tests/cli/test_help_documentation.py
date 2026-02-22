@@ -120,7 +120,14 @@ class TestHelpDocumentation:
         assert "--track-mem" in help_out
         assert "--track-cpu" in help_out
         assert "--quiet" in help_out
+        # newly added CSS toggle
+        assert "--no-css" in help_out
 
     def test_config_help_exits_zero(self, runner: CliRunner) -> None:
         """Test that config --help exits with code 0."""
         assert runner.invoke(main, ["config", "--help"]).exit_code == 0
+
+    def test_compare_help_mentions_no_css(self, runner: CliRunner) -> None:
+        """Compare help should document the --no-css option."""
+        help_out = runner.invoke(main, ["compare", "--help"]).output.lower()
+        assert "--no-css" in help_out

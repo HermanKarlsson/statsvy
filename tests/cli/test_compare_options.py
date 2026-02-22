@@ -19,6 +19,7 @@ def test_compare_options_fields_and_immutability(tmp_path: Path) -> None:
         output=out_file,
         verbose=True,
         no_color=False,
+        no_css=False,
     )
 
     assert opts.project1 == "/repo/a"
@@ -28,6 +29,7 @@ def test_compare_options_fields_and_immutability(tmp_path: Path) -> None:
     assert isinstance(opts.output, Path)
     assert opts.verbose is True
     assert opts.no_color is False
+    assert opts.no_css is False
 
     # dataclass is frozen -> assignment should raise FrozenInstanceError
     with pytest.raises(FrozenInstanceError):

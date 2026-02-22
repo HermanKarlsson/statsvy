@@ -79,6 +79,7 @@ class ScanKwargs(TypedDict, total=False):
     min_lines_threshold: int | None
     no_deps: bool
     no_deps_list: bool
+    no_css: bool
 
 
 def _setup_scan_config(loader: ConfigLoader, **kwargs: Unpack[ScanKwargs]) -> None:
@@ -247,7 +248,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["table", "json", "md", "markdown"]),
+    type=click.Choice(["table", "json", "md", "markdown", "html"]),
     help="Output format",
 )
 @click.option(
@@ -353,6 +354,7 @@ def main(ctx: click.Context, config: Path | None) -> None:
     is_flag=True,
     help="Show only dependency counts, not individual package names",
 )
+@click.option("--no-css", is_flag=True, help="Omit embedded CSS from HTML output")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress console output")
 @click.pass_obj
 def scan(
@@ -404,6 +406,7 @@ def scan(
             ignore_patterns=kwargs.get("ignore", ()),
             output_format=kwargs.get("format"),
             output_path=kwargs.get("output"),
+            no_css=bool(kwargs.get("no_css")),
         )
     finally:
         # Restore prior console state so tests and callers are not affected.
@@ -476,7 +479,7 @@ def current() -> None:
 @click.option(
     "--format",
     "-f",
-    type=click.Choice(["table", "json", "md", "markdown"]),
+    type=click.Choice(["table", "json", "md", "markdown", "html"]),
     help="Output format",
 )
 @click.option(
@@ -496,6 +499,7 @@ def current() -> None:
     show_default=False,
     help="Show or hide percentage columns in output",
 )
+@click.option("--no-css", is_flag=True, help="Omit embedded CSS from HTML exports")
 @click.pass_obj
 def compare(
     loader: ConfigLoader,
@@ -507,6 +511,7 @@ def compare(
     no_color: bool,
     truncate_paths: bool | None,
     percentages: bool | None,
+    no_css: bool,
 ) -> None:
     """Compare metrics between two projects.
 
@@ -523,6 +528,7 @@ def compare(
         no_color: Disable colored output.
         truncate_paths: Whether to truncate displayed paths.
         percentages: Whether to show percentage columns.
+        no_css: When True omit the default CSS from HTML output.
     """
     _setup_compare_config(
         loader,
@@ -538,4 +544,4 @@ def compare(
     cast(_AppConsole, console).set_color_enabled(loader.config.core.color)
 
     handler = CompareHandler(loader.config)
-    handler.execute(project1, project2, format, output)
+    handler.execute(project1, project2, format, output, include_css=not no_css)
