@@ -59,3 +59,16 @@ class TestHtmlFormatter:
         result = fmt.format(minimal_metrics)
         assert "<h2>Dependencies</h2>" in result
         assert "foo" in result
+
+    def test_default_includes_css(self, minimal_metrics: MagicMock) -> None:
+        """By default the formatter should insert a <style> block."""
+        fmt = HtmlFormatter()
+        output = fmt.format(minimal_metrics)
+        assert "<style" in output
+        assert "table" in output  # some CSS rules present
+
+    def test_disable_css(self, minimal_metrics: MagicMock) -> None:
+        """When include_css=False the style block must be omitted."""
+        fmt = HtmlFormatter(include_css=False)
+        output = fmt.format(minimal_metrics)
+        assert "<style" not in output

@@ -1,4 +1,9 @@
-"""Formatter module for simple HTML output."""
+"""Formatter module for simple HTML output.
+
+This formatter previously produced entirely unstyled documents; a small
+embedded stylesheet can now be included by default, and it may be disabled
+via `include_css=False` (e.g. when the `--no-css` CLI flag is used).
+"""
 
 from html import escape
 
@@ -12,22 +17,26 @@ from statsvy.utils.formatting import format_size, truncate_path_display
 class HtmlFormatter:
     """Formats Metrics objects as basic HTML strings.
 
-    The output is intentionally minimal: a full HTML document with no CSS or
-    external resources. Tables are used for summary, category and language
-    sections. This formatter is intended to be consumed by a browser or saved
-    to a file.
+    The output is intentionally minimal: a full HTML document with an optional
+    embedded stylesheet (disabled by default via ``include_css=False``). Tables
+    are used for summary, category and language sections. This formatter is
+    intended to be consumed by a browser or saved to a file.
     """
 
     def __init__(
         self,
         display_config: DisplayConfig | None = None,
         git_config: GitConfig | None = None,
+        include_css: bool = True,
     ) -> None:
         """Initialize formatter with display preferences.
 
         Args:
             display_config: Optional display configuration overrides.
             git_config: Optional git configuration settings.
+            include_css: Whether to include a small embedded stylesheet in
+                the generated HTML. This can be disabled via the CLI
+                "--no-css" flag.
         """
         self._truncate_paths = (
             display_config.truncate_paths if display_config else False
@@ -38,6 +47,7 @@ class HtmlFormatter:
         # dependency section should behave like other formatters
         self._show_deps_list = display_config.show_deps_list if display_config else True
         self._show_contributors = git_config.show_contributors if git_config else True
+        self._include_css = include_css
 
     def format(self, metrics: Metrics, git_info: GitInfo | None = None) -> str:
         """Format metrics data as a simple HTML document.
@@ -56,10 +66,20 @@ class HtmlFormatter:
             '<html lang="en">',
             "<head>",
             f'<meta charset="utf-8"/><title>{title}</title>',
-            "</head>",
-            "<body>",
-            f"<h1>Scan: {title}</h1>",
         ]
+        if self._include_css:
+            # simple CSS to make tables readable without external dependencies
+            html_parts.append(
+                "<style>"
+                "body{font-family:Arial,Helvetica,sans-serif;margin:1em;}"
+                "table{border-collapse:collapse;width:100%;}"
+                "th,td{border:1px solid #ccc;padding:0.5em;text-align:left;}"
+                "h1,h2,h3{color:#333;}"
+                "</style>"
+            )
+        html_parts.append("</head>")
+        html_parts.append("<body>")
+        html_parts.append(f"<h1>Scan: {title}</h1>")
 
         html_parts.append(self._format_summary(metrics, git_info))
 
@@ -69,8 +89,11 @@ class HtmlFormatter:
         if metrics.lines_by_lang:
             html_parts.append(self._format_language_table(metrics))
 
-        if getattr(metrics, "dependencies", None) is not None:
-            html_parts.append(self._format_dependencies(metrics.dependencies))
+        deps = getattr(metrics, "dependencies", None)
+        if deps is not None:
+            # mypy can't narrow the type of an attribute, so store locally
+            assert deps is not None
+            html_parts.append(self._format_dependencies(deps))
 
         html_parts.append("</body>")
         html_parts.append("</html>")

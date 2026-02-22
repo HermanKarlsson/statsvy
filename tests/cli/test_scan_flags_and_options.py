@@ -227,6 +227,18 @@ class TestScanFlagsAndOptions:
         result = _invoke_scan(runner, temp_dir, "--format", "html")
         assert result.exit_code == 0
 
+    def test_default_html_includes_css(self, runner: CliRunner, temp_dir: Path) -> None:
+        """When generating HTML without flags the output should contain CSS."""
+        result = _invoke_scan(runner, temp_dir, "--format", "html")
+        assert result.exit_code == 0
+        assert "<style" in result.output
+
+    def test_no_css_flag_omits_style(self, runner: CliRunner, temp_dir: Path) -> None:
+        """The --no-css flag should prevent the stylesheet from appearing."""
+        result = _invoke_scan(runner, temp_dir, "--format", "html", "--no-css")
+        assert result.exit_code == 0
+        assert "<style" not in result.output
+
     def test_output_file_option_saves_file(
         self, runner: CliRunner, temp_dir: Path, tmp_path: Path
     ) -> None:

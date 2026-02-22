@@ -37,6 +37,7 @@ class CompareHandler:
         project2_path: str,
         output_format: str | None,
         output_path: Path | None,
+        include_css: bool | None = None,
     ) -> None:
         """Execute the complete comparison workflow.
 
@@ -45,6 +46,7 @@ class CompareHandler:
             project2_path: Path to the second project directory.
             output_format: Desired output format (table, json, md).
             output_path: Path to save output, or None to print to console.
+            include_css: When ``True`` include embedded stylesheet in HTML.
 
         Raises:
             FileNotFoundError: If either project has no history.
@@ -73,6 +75,7 @@ class CompareHandler:
                 comparison,
                 output_format,
                 display_config=self.config.display,
+                include_css=include_css,
             )
         except ValueError as e:
             console.print(Text(f"Error: {e}", style="red"))

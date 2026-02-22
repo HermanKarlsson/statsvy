@@ -46,6 +46,12 @@ Statsvy supports three output formats:
     statsvy scan . --format html
     ```
 
+You can disable the small embedded stylesheet by adding `--no-css`:
+
+    ```bash
+    statsvy scan . --format html --no-css
+    ```
+
 Save output to a file:
 
 ```bash

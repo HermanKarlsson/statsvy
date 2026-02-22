@@ -123,6 +123,43 @@ class TestCLICommands:
         assert result.exit_code == 0
         mock_show_current.assert_called_once()
 
+    @patch("statsvy.cli_main.CompareHandler.execute")
+    def test_compare_no_css_flag(
+        self, mock_execute: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """CLI should accept --no-css and forward the boolean to handler."""
+        # create two dummy project directories so click validation passes
+        dir1 = tmp_path / "proj1"
+        dir2 = tmp_path / "proj2"
+        dir1.mkdir()
+        dir2.mkdir()
+
+        result = runner.invoke(
+            main,
+            ["compare", str(dir1), str(dir2), "--no-css"],
+        )
+        assert result.exit_code == 0
+        # verify handler was called and the include_css kwarg is False
+        assert mock_execute.called
+        kwargs = mock_execute.call_args[1]  # keyword args of call
+        assert kwargs.get("include_css") is False
+
+    @patch("statsvy.cli_main.CompareHandler.execute")
+    def test_compare_default_css(
+        self, mock_execute: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """When --no-css is omitted the handler should receive include_css=True."""
+        dir1 = tmp_path / "proj1"
+        dir2 = tmp_path / "proj2"
+        dir1.mkdir()
+        dir2.mkdir()
+
+        result = runner.invoke(main, ["compare", str(dir1), str(dir2)])
+        assert result.exit_code == 0
+        assert mock_execute.called
+        kwargs = mock_execute.call_args[1]
+        assert kwargs.get("include_css") is True
+
     def test_config_command_exits_zero(self, runner: CliRunner) -> None:
         """Test that config command exits with code 0."""
         assert runner.invoke(main, ["config"]).exit_code == 0

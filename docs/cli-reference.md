@@ -62,6 +62,7 @@ statsvy scan [OPTIONS] [TARGET]
 | `--min-lines-threshold N` | `--min-lines` | Skip files with fewer lines than N |
 | `--no-deps` | | Skip dependency analysis |
 | `--quiet` | `-q` | Suppress console output |
+| `--no-css` | | Omit embedded CSS from HTML output |
 
 **Examples:**
 
@@ -110,6 +111,18 @@ Compare metrics between two projects side by side.
 ```
 statsvy compare [OPTIONS] PROJECT1 PROJECT2
 ```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--format FORMAT` | `-f` | Output format: `table`, `json`, `md`, `markdown`, `html` |
+| `--output PATH` | `-o` | Save output to file |
+| `--verbose` | `-v` | Enable verbose output |
+| `--no-color` | | Disable colored output |
+| `--truncate-paths/--no-truncate-paths` | | Truncate displayed file paths |
+| `--percentages/--no-percentages` | | Show/hide percentage columns |
+| `--no-css` | | Omit embedded CSS from HTML output |
 
 **Arguments:**
 
