@@ -80,7 +80,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --extra dev
 
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
@@ -140,7 +140,7 @@ jobs:
           git push origin "v$RELEASE_VERSION"
 
       - name: Build package artifacts
-        run: uv run python -m build
+        run: uv run --with build python -m build
 
       - name: Publish GitHub release and assets
         uses: softprops/action-gh-release@v2
