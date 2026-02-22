@@ -37,3 +37,4 @@ statsvy scan . --format json
 - [Quick Start](quickstart.md) — Learn the basics in 5 minutes
 - [CLI Reference](cli-reference.md) — Full command documentation
 - [Configuration](configuration.md) — Customize statsvy to your needs
+- [Developer API](developer-api.md) — Integrate statsvy in Python code
