@@ -46,6 +46,7 @@ nav:
   - Development:
       - Contributing: contributing.md
       - Architecture: architecture.md
+      - Developer API: developer-api.md
   - Changelog: changelog.md
 
 markdown_extensions:
