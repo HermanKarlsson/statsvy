@@ -9,8 +9,6 @@
 - Maintainability index
 - Halstead metrics
 - Code smell detection
-- HTML export functionality
-- Customizable themes and styling
 - Web dashboard for metrics visualization
 - IDE extensions
 - Programmatic API access
