@@ -1,9 +1,4 @@
-"""Formatter module for simple HTML output.
-
-This formatter previously produced entirely unstyled documents; a small
-embedded stylesheet can now be included by default, and it may be disabled
-via `include_css=False` (e.g. when the `--no-css` CLI flag is used).
-"""
+"""Formatter module for simple HTML output."""
 
 from html import escape
 
@@ -91,7 +86,6 @@ class HtmlFormatter:
 
         deps = getattr(metrics, "dependencies", None)
         if deps is not None:
-            # mypy can't narrow the type of an attribute, so store locally
             assert deps is not None
             html_parts.append(self._format_dependencies(deps))
 

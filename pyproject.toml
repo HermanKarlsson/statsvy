@@ -50,7 +50,6 @@ dev = [
     "ruff>=0.1.8",
     "pre-commit>=3.6.0",
     "ty==0.0.17",
-    "python-semantic-release>=9.0.0",
     "build>=1.0.0",
 ]
 docs = [
@@ -100,26 +99,3 @@ exclude = ["typings"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=statsvy --cov-report=term-missing --cov-fail-under=90"
-
-# --- Semantic Release Configuration ---
-
-[tool.semantic_release]
-version_variables = ["src/statsvy/__init__.py:__version__"]
-branch = "main"
-commit_message = "chore(release): v{version}"
-build_command = "python -m build"
-changelog_file = "CHANGELOG.md"
-upload_to_pypi = false  # Handled by separate publish workflow step
-tag_format = "v{version}"
-
-[tool.semantic_release.changelog]
-template_dir = ".github/changelog_templates"
-exclude_commit_patterns = [
-    "^chore\\(release\\):",
-    "^Merge",
-]
-
-[tool.semantic_release.commit_parser_options]
-allowed_tags = ["feat", "fix", "perf", "refactor", "docs", "style", "test", "chore"]
-minor_tags = ["feat"]
-patch_tags = ["fix", "perf"]

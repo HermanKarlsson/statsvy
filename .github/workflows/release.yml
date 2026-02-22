@@ -1,29 +1,73 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version in SemVer format (e.g. 1.2.3)"
+        required: true
+        type: string
+      source_branch:
+        description: "Branch to use as changelog source"
+        required: true
+        default: "develop"
+        type: string
+      target_branch:
+        description: "Branch to release from"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  # Only run release if CI passes
-  ci:
-    uses: ./.github/workflows/ci.yml
-
   release:
-    name: Semantic Release
-    needs: ci
+    name: Build and Publish Release
     runs-on: ubuntu-latest
     concurrency: release
     if: github.repository == 'HermanKarlsson/statsvy'
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+      TARGET_BRANCH: ${{ inputs.target_branch }}
+      DISPATCH_REF: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: version must match MAJOR.MINOR.PATCH (example: 1.2.3)."
+            exit 1
+          fi
+
+          if [ "$TARGET_BRANCH" != "main" ]; then
+            echo "ERROR: target_branch must be 'main' to match repository release policy."
+            exit 1
+          fi
+
+          if [ "$DISPATCH_REF" != "$TARGET_BRANCH" ]; then
+            echo "ERROR: Run this workflow from '$TARGET_BRANCH' in the Actions UI."
+            exit 1
+          fi
+
+          git fetch --prune --tags origin
+          git fetch origin "$SOURCE_BRANCH":"$SOURCE_BRANCH"
+          git fetch origin "$TARGET_BRANCH":"$TARGET_BRANCH"
+
+          if git rev-parse -q --verify "refs/tags/v$RELEASE_VERSION" >/dev/null; then
+            echo "ERROR: tag v$RELEASE_VERSION already exists."
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -38,25 +82,78 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Python Semantic Release
-        id: release
-        uses: python-semantic-release/python-semantic-release@v9.15.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
 
-      - name: Build package
-        if: steps.release.outputs.released == 'true'
+      - name: Generate changelog from source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout "$SOURCE_BRANCH"
+          git reset --hard "origin/$SOURCE_BRANCH"
+          git-cliff --config cliff.toml --output /tmp/CHANGELOG.md
+
+      - name: Create release content on target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git checkout "$TARGET_BRANCH"
+          git reset --hard "origin/$TARGET_BRANCH"
+
+          git merge --squash --no-commit "origin/$SOURCE_BRANCH"
+          cp /tmp/CHANGELOG.md CHANGELOG.md
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          version = "${{ env.RELEASE_VERSION }}"
+          path = Path("src/statsvy/__init__.py")
+          text = path.read_text(encoding="utf-8")
+          updated = re.sub(
+              r'__version__\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"',
+              f'__version__ = "{version}"',
+              text,
+              count=1,
+          )
+          if updated == text:
+              raise SystemExit("Could not find __version__ assignment to update")
+          path.write_text(updated, encoding="utf-8")
+          PY
+
+      - name: Validate release tree
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run ty check .
+          uv run pytest -v --cov=statsvy --cov-report=term-missing --cov-fail-under=90
+
+      - name: Commit release changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md src/statsvy/__init__.py
+          git commit -m "release: v$RELEASE_VERSION"
+          git push origin "$TARGET_BRANCH"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag "v$RELEASE_VERSION"
+          git push origin "v$RELEASE_VERSION"
+
+      - name: Build package artifacts
         run: uv run python -m build
 
       - name: Publish GitHub Release
-        if: steps.release.outputs.released == 'true'
-        uses: python-semantic-release/publish-action@v9.15.2
+        uses: softprops/action-gh-release@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.release.outputs.tag }}
-
-      - name: Upload release artifacts
-        if: steps.release.outputs.released == 'true'
-        run: gh release upload ${{ steps.release.outputs.tag }} dist/* --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ env.RELEASE_VERSION }}
+          target_commitish: ${{ env.TARGET_BRANCH }}
+          body_path: CHANGELOG.md
+          files: dist/*
