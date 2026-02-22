@@ -91,6 +91,9 @@ statsvy scan . --format json
 # Markdown format
 statsvy scan . --format markdown
 
+# HTML format
+statsvy scan . --format html
+
 # Save output to a file
 statsvy scan . --format json --output stats.json
 ```

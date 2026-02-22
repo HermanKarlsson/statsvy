@@ -23,3 +23,4 @@ class CompareOptions:
     output: Path | None
     verbose: bool
     no_color: bool
+    no_css: bool

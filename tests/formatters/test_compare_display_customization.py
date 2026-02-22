@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from statsvy.core.comparison import ComparisonAnalyzer
+from statsvy.core.formatter import Formatter
 from statsvy.data.config import DisplayConfig
 from statsvy.data.metrics import Metrics
 from statsvy.formatters.compare_formatter import CompareFormatter
@@ -127,3 +128,32 @@ class TestCompareFormatterPercentages:
 
         # Default should show percentages
         assert "%" in result
+
+    # HTML-specific tests using the central Formatter to exercise include_css
+    def test_comparison_html_includes_css(
+        self, project1_metrics: Metrics, project2_metrics: Metrics
+    ) -> None:
+        """When HTML is requested without disabling CSS a <style> tag appears."""
+        comparison = ComparisonAnalyzer.compare(project1_metrics, project2_metrics)
+        html = Formatter.format(
+            comparison,
+            "html",
+            display_config=DisplayConfig(truncate_paths=False, show_percentages=True),
+            include_css=True,
+        )
+        assert html.strip().startswith("<!DOCTYPE html>")
+        assert "<style" in html
+
+    def test_comparison_html_no_css(
+        self, project1_metrics: Metrics, project2_metrics: Metrics
+    ) -> None:
+        """Setting include_css=False should omit any <style> block."""
+        comparison = ComparisonAnalyzer.compare(project1_metrics, project2_metrics)
+        html = Formatter.format(
+            comparison,
+            "html",
+            display_config=DisplayConfig(truncate_paths=False, show_percentages=True),
+            include_css=False,
+        )
+        assert html.strip().startswith("<!DOCTYPE html>")
+        assert "<style" not in html
