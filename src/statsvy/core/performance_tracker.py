@@ -8,7 +8,7 @@ via tracemalloc and optional process CPU usage via resource.getrusage.
 import os
 import resource
 import tracemalloc
-from time import perf_counter
+from time import perf_counter, thread_time
 
 from statsvy.data.performance_metrics import PerformanceMetrics
 
@@ -50,6 +50,7 @@ class PerformanceTracker:
         self._track_cpu = track_cpu
         self._cpu_start_user: float | None = None
         self._cpu_start_system: float | None = None
+        self._thread_cpu_start: float | None = None
         self._wall_start: float | None = None
 
     def start(self) -> None:
@@ -71,6 +72,7 @@ class PerformanceTracker:
             usage = resource.getrusage(resource.RUSAGE_SELF)
             self._cpu_start_user = usage.ru_utime
             self._cpu_start_system = usage.ru_stime
+            self._thread_cpu_start = thread_time()
             self._wall_start = perf_counter()
 
         self._started = True
@@ -102,20 +104,25 @@ class PerformanceTracker:
             self._track_cpu
             and self._cpu_start_user is not None
             and self._cpu_start_system is not None
+            and self._thread_cpu_start is not None
             and self._wall_start is not None
         ):
             usage = resource.getrusage(resource.RUSAGE_SELF)
             cpu_user_seconds = max(0.0, usage.ru_utime - self._cpu_start_user)
             cpu_system_seconds = max(0.0, usage.ru_stime - self._cpu_start_system)
             cpu_seconds = cpu_user_seconds + cpu_system_seconds
+            thread_cpu_seconds = max(0.0, thread_time() - self._thread_cpu_start)
             wall_seconds = max(1e-9, perf_counter() - self._wall_start)
 
-            cpu_percent_single_core = (cpu_seconds / wall_seconds) * 100
+            raw_cpu_percent_single_core = (thread_cpu_seconds / wall_seconds) * 100
+            cpu_percent_single_core = max(0.0, min(raw_cpu_percent_single_core, 100.0))
             cpu_count = max(1, os.cpu_count() or 1)
-            cpu_percent_all_cores = cpu_percent_single_core / cpu_count
+            raw_cpu_percent_all_cores = ((cpu_seconds / wall_seconds) * 100) / cpu_count
+            cpu_percent_all_cores = max(0.0, min(raw_cpu_percent_all_cores, 100.0))
 
             self._cpu_start_user = None
             self._cpu_start_system = None
+            self._thread_cpu_start = None
             self._wall_start = None
 
         self._started = False

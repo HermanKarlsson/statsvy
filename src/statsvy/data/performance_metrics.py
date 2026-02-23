@@ -22,11 +22,12 @@ class PerformanceMetrics:
         cpu_seconds: Total process CPU time delta (user + system).
         cpu_user_seconds: Process user CPU time delta.
         cpu_system_seconds: Process system CPU time delta.
-        cpu_percent_single_core: CPU usage normalized to one core.
-            Formula: cpu_seconds / wall_seconds * 100.
-            Can exceed 100% when multiple cores are actively used.
-        cpu_percent_all_cores: CPU usage normalized by logical core count.
-            Formula: cpu_percent_single_core / cpu_count.
+        cpu_percent_single_core: CPU usage for the current thread normalized
+            to one core. Formula: thread_cpu_seconds / wall_seconds * 100,
+            then clamped to 0..100.
+        cpu_percent_all_cores: Process CPU usage normalized by logical core
+            count. Formula: (cpu_seconds / wall_seconds * 100) / cpu_count,
+            then clamped to 0..100.
     """
 
     peak_memory_bytes: int
