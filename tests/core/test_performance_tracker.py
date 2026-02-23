@@ -129,12 +129,14 @@ class TestPerformanceTracker:
 
         with (
             patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.thread_time") as mock_thread_time,
             patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
         ):
             mock_usage.side_effect = [
                 type("Usage", (), {"ru_utime": 1.0, "ru_stime": 0.5})(),
                 type("Usage", (), {"ru_utime": 1.6, "ru_stime": 0.9})(),
             ]
+            mock_thread_time.side_effect = [30.0, 31.0]
             mock_clock.side_effect = [10.0, 11.0]
 
             tracker.start()
@@ -154,6 +156,7 @@ class TestPerformanceTracker:
         with (
             patch("statsvy.core.performance_tracker.tracemalloc") as mock_tm,
             patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.thread_time") as mock_thread_time,
             patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
         ):
             mock_tm.get_traced_memory.return_value = (1_000, 2_000)
@@ -161,6 +164,7 @@ class TestPerformanceTracker:
                 type("Usage", (), {"ru_utime": 2.0, "ru_stime": 1.0})(),
                 type("Usage", (), {"ru_utime": 2.2, "ru_stime": 1.1})(),
             ]
+            mock_thread_time.side_effect = [40.0, 40.3]
             mock_clock.side_effect = [20.0, 20.5]
 
             tracker.start()
@@ -168,4 +172,55 @@ class TestPerformanceTracker:
 
             assert metrics.peak_memory_bytes == 2_000
             assert metrics.cpu_seconds == pytest.approx(0.3)
-            assert metrics.cpu_percent_single_core is not None
+            assert metrics.cpu_percent_single_core == pytest.approx(60.0)
+            assert metrics.cpu_percent_all_cores is not None
+
+    def test_tracker_cpu_single_core_percent_is_clamped(self) -> None:
+        """Single-core CPU percentage should never exceed 100%."""
+        tracker = PerformanceTracker(track_memory=False, track_cpu=True)
+
+        with (
+            patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.thread_time") as mock_thread_time,
+            patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
+            patch("statsvy.core.performance_tracker.os.cpu_count", return_value=8),
+        ):
+            mock_usage.side_effect = [
+                type("Usage", (), {"ru_utime": 1.0, "ru_stime": 0.0})(),
+                type("Usage", (), {"ru_utime": 2.1, "ru_stime": 0.0})(),
+            ]
+            mock_thread_time.side_effect = [50.0, 51.1]
+            mock_clock.side_effect = [10.0, 11.0]
+
+            tracker.start()
+            metrics = tracker.stop()
+
+            assert metrics.cpu_seconds == pytest.approx(1.1)
+            assert metrics.cpu_percent_single_core == pytest.approx(100.0)
+            assert metrics.cpu_percent_all_cores == pytest.approx(13.75)
+
+    def test_tracker_single_core_uses_thread_cpu_time(self) -> None:
+        """Single-core CPU% should be derived from current-thread CPU time."""
+        tracker = PerformanceTracker(track_memory=False, track_cpu=True)
+
+        with (
+            patch("statsvy.core.performance_tracker.resource.getrusage") as mock_usage,
+            patch("statsvy.core.performance_tracker.thread_time") as mock_thread_time,
+            patch("statsvy.core.performance_tracker.perf_counter") as mock_clock,
+            patch("statsvy.core.performance_tracker.os.cpu_count", return_value=4),
+        ):
+            # Process CPU delta is 1.2 s over 1.0 s wall => 120% process CPU.
+            mock_usage.side_effect = [
+                type("Usage", (), {"ru_utime": 1.0, "ru_stime": 0.2})(),
+                type("Usage", (), {"ru_utime": 2.0, "ru_stime": 0.4})(),
+            ]
+            # Current thread CPU delta is 0.6 s over 1.0 s wall => 60% single-core.
+            mock_thread_time.side_effect = [10.0, 10.6]
+            mock_clock.side_effect = [20.0, 21.0]
+
+            tracker.start()
+            metrics = tracker.stop()
+
+            assert metrics.cpu_seconds == pytest.approx(1.2)
+            assert metrics.cpu_percent_single_core == pytest.approx(60.0)
+            assert metrics.cpu_percent_all_cores == pytest.approx(30.0)
